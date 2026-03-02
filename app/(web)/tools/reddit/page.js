@@ -17,43 +17,44 @@ export default function RedditScraperPage() {
         setError(null);
         setResult(null);
 
-        // 新的纯前端代理请求逻辑，彻底抛弃容易被封的后端 API
         try {
-            let jsonUrl = url;
-            if (!jsonUrl.endsWith('.json')) {
-                jsonUrl = jsonUrl.replace(/\/$/, '') + '/.json';
+            // 解析出 Reddit 的 post ID
+            const match = url.match(/comments\/([a-zA-Z0-9]+)/);
+            if (!match) {
+                throw new Error("无效的链接格式。请确保那是包含 'comments/...' 的有效 Reddit 帖子链接。");
+            }
+            const postId = match[1];
+
+            // 1. 获取帖子标题 (通过第三方 PullPush 档案库，彻底绕过 Reddit 的验证码防火墙)
+            const submissionRes = await fetch(`https://api.pullpush.io/reddit/submission/search?ids=${postId}`);
+            if (!submissionRes.ok) throw new Error("无法连接到第三方档案库。");
+            const submissionData = await submissionRes.json();
+            const postTitle = submissionData.data?.[0]?.title || `Reddit Post (${postId})`;
+
+            // 2. 获取帖子评论 (最多拉取最新的 200 条)
+            const commentsRes = await fetch(`https://api.pullpush.io/reddit/comment/search?link_id=${postId}&limit=200`);
+            if (!commentsRes.ok) throw new Error("无法获取评论数据，档案库请求可能已限流，请稍后再试。");
+            const commentsData = await commentsRes.json();
+
+            if (!commentsData.data || commentsData.data.length === 0) {
+                throw new Error("该帖子尚未被第三方公共档案库（PullPush）收录记录。可以尝试抓取那些发布时间超过 1 小时的稍微旧一点的帖子。");
             }
 
-            // 使用免费的公共 CORS 代理，让请求完全看起来像普通的浏览器前端请求
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jsonUrl)}`;
-
-            const res = await fetch(proxyUrl);
-            if (!res.ok) {
-                throw new Error(`网络限制或链接失效 (状态码: ${res.status})。请尝试更换链接或检查网络。`);
-            }
-
-            const data = await res.json();
-
-            // 在前端直接解析数据
-            const postTitle = data[0]?.data?.children?.[0]?.data?.title || 'Unknown Title';
-            const commentsData = data[1]?.data?.children || [];
+            const rawComments = commentsData.data;
             const extracted = [];
 
-            for (const item of commentsData) {
-                if (item.kind === 'more') continue;
+            for (const item of rawComments) {
+                const body = item.body || '';
+                const author = item.author || '';
+                const score = item.score || 0;
 
-                const body = item.data?.body || '';
-                const author = item.data?.author || '';
-                const score = item.data?.ups || 0;
-
-                // 复用之前的过滤条件
+                // 过滤掉无关内容
                 if (author && !["[deleted]", "[removed]", "AutoModerator"].includes(author) &&
                     body && !["[deleted]", "[removed]"].includes(body) &&
                     score >= 1 && body.split(/\s+/).length >= 3) {
 
                     // 清理掉多余换行
                     let cleanedBody = body.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
-
                     extracted.push({ author, score, body: cleanedBody });
                 }
             }
