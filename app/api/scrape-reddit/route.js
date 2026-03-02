@@ -21,23 +21,18 @@ export async function GET(request) {
 
         // Strategy: First try direct Reddit fetch (works on local/residential IPs).
         // If that fails (Vercel/Datacenter block), rotate through Redlib proxies.
+        // Verified instances currently bypassing Datacenter Block:
         const instances = [
             'https://www.reddit.com',
-            'https://l.opnxng.com',
-            'https://redlib.r4fo.com',
-            'https://red.artemislena.eu',
-            'https://redlib.nadeko.net',
             'https://redlib.perennialte.ch',
             'https://redlib.privacyredirect.com',
-            'https://redlib.privadency.com',
-            'https://redlib.4o1x5.dev',
-            'https://redlib.ducks.party',
-            'https://redlib.catsarch.com',
-            'https://redlib.copy.sh',
+            'https://redlib.privadency.com'
         ];
 
         let html = null;
         let successInstance = null;
+
+        const commonUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
         for (const instance of instances) {
             try {
@@ -46,9 +41,9 @@ export async function GET(request) {
                 const targetUrl = isDirect ? `${instance}/comments/${postId}.json` : `${instance}/comments/${postId}`;
 
                 const response = await fetch(targetUrl, {
-                    headers: isDirect ? { 'User-Agent': 'curl/7.81.0' } : {
-                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    headers: {
+                        'User-Agent': commonUA,
+                        'Accept': isDirect ? 'application/json' : 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                     },
                     next: { revalidate: 0 }
                 });
