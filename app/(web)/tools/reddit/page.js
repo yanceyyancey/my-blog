@@ -17,15 +17,52 @@ export default function RedditScraperPage() {
         setError(null);
         setResult(null);
 
+        // 新的纯前端代理请求逻辑，彻底抛弃容易被封的后端 API
         try {
-            const res = await fetch(`/api/scrape-reddit?url=${encodeURIComponent(url)}`);
-            const data = await res.json();
-
-            if (!res.ok) {
-                throw new Error(data.error || '抓取失败，请检查链接或稍后再试');
+            let jsonUrl = url;
+            if (!jsonUrl.endsWith('.json')) {
+                jsonUrl = jsonUrl.replace(/\/$/, '') + '/.json';
             }
 
-            setResult(data);
+            // 使用免费的公共 CORS 代理，让请求完全看起来像普通的浏览器前端请求
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jsonUrl)}`;
+
+            const res = await fetch(proxyUrl);
+            if (!res.ok) {
+                throw new Error(`网络限制或链接失效 (状态码: ${res.status})。请尝试更换链接或检查网络。`);
+            }
+
+            const data = await res.json();
+
+            // 在前端直接解析数据
+            const postTitle = data[0]?.data?.children?.[0]?.data?.title || 'Unknown Title';
+            const commentsData = data[1]?.data?.children || [];
+            const extracted = [];
+
+            for (const item of commentsData) {
+                if (item.kind === 'more') continue;
+
+                const body = item.data?.body || '';
+                const author = item.data?.author || '';
+                const score = item.data?.ups || 0;
+
+                // 复用之前的过滤条件
+                if (author && !["[deleted]", "[removed]", "AutoModerator"].includes(author) &&
+                    body && !["[deleted]", "[removed]"].includes(body) &&
+                    score >= 1 && body.split(/\s+/).length >= 3) {
+
+                    // 清理掉多余换行
+                    let cleanedBody = body.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+                    extracted.push({ author, score, body: cleanedBody });
+                }
+            }
+
+            setResult({
+                title: postTitle,
+                count: extracted.length,
+                comments: extracted
+            });
         } catch (err) {
             setError(err.message);
         } finally {
@@ -62,10 +99,10 @@ export default function RedditScraperPage() {
 
             {/* 居中且充满视觉冲击力的 Hero 区域 */}
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-20 pt-32 text-center">
-                <h1 className="text-5xl md:text-7xl font-extrabold mb-6 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 drop-shadow-sm">
+                <h1 className="text-4xl md:text-6xl font-extrabold mb-6 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 drop-shadow-sm px-2 break-words">
                     Reddit Comment Miner
                 </h1>
-                <p className="text-xl md:text-2xl text-gray-500 mb-12 leading-relaxed max-w-2xl mx-auto font-light">
+                <p className="text-xl text-gray-500 mb-12 leading-relaxed max-w-2xl mx-auto font-light px-4 break-words">
                     Extract, filter, and export high-quality Reddit discussions directly into an organized CSV spreadsheet in seconds.
                 </p>
 
@@ -90,8 +127,8 @@ export default function RedditScraperPage() {
                             type="submit"
                             disabled={loading || !url}
                             className={`absolute right-3 top-3 bottom-3 px-8 rounded-xl font-bold text-lg text-white shadow-lg transition-all ${loading
-                                    ? 'bg-blue-400/80 cursor-not-allowed scale-95'
-                                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl active:scale-95'
+                                ? 'bg-blue-400/80 cursor-not-allowed scale-95'
+                                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl active:scale-95'
                                 }`}
                         >
                             {loading ? (
@@ -165,9 +202,11 @@ export default function RedditScraperPage() {
                                                 {comment.score}
                                             </div>
                                         </div>
-                                        <p className="text-gray-700 text-[15px] leading-relaxed whitespace-pre-wrap pl-13">
-                                            {comment.body}
-                                        </p>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-gray-700 text-[15px] leading-relaxed break-words whitespace-pre-wrap">
+                                                {comment.body}
+                                            </p>
+                                        </div>
                                     </div>
                                 ))
                             ) : (
