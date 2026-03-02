@@ -24,6 +24,7 @@ export async function GET(request) {
         // Verified instances currently bypassing Datacenter Block:
         const instances = [
             'https://www.reddit.com',
+            'https://www.reddit.com/.rss', // RSS Trick: very high resilience
             'https://redlib.perennialte.ch',
             'https://redlib.privacyredirect.com',
             'https://redlib.privadency.com'
@@ -36,14 +37,20 @@ export async function GET(request) {
 
         for (const instance of instances) {
             try {
-                // Special case for direct Reddit: fetch the .json immediately
                 const isDirect = instance === 'https://www.reddit.com';
-                const targetUrl = isDirect ? `${instance}/comments/${postId}.json` : `${instance}/comments/${postId}`;
+                const isRSS = instance.endsWith('.rss');
+
+                let targetUrl;
+                if (isDirect) targetUrl = `${instance}/comments/${postId}.json`;
+                else if (isRSS) targetUrl = `https://www.reddit.com/comments/${postId}.rss`;
+                else targetUrl = `${instance}/comments/${postId}`;
+
+                console.log(`[RedditScraper] Trying ${targetUrl}...`);
 
                 const response = await fetch(targetUrl, {
                     headers: {
                         'User-Agent': commonUA,
-                        'Accept': isDirect ? 'application/json' : 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                        'Accept': isDirect ? 'application/json' : (isRSS ? 'application/xml' : 'text/html,*/*'),
                     },
                     next: { revalidate: 0 }
                 });
@@ -51,7 +58,6 @@ export async function GET(request) {
                 if (response.ok) {
                     if (isDirect) {
                         const directData = await response.json();
-                        // If direct JSON works, return it immediately with a special structure
                         const postInfo = directData[0].data.children[0].data;
                         const comments = directData[1].data.children
                             .filter(child => child.kind === 't1')
@@ -63,6 +69,7 @@ export async function GET(request) {
                             .filter(c => c.author && !["[deleted]", "[removed]", "AutoModerator"].includes(c.author) && c.body.split(/\s+/).length >= 3);
 
                         if (comments.length > 0) {
+                            console.log(`[RedditScraper] Success via Direct JSON`);
                             return NextResponse.json({
                                 title: postInfo.title,
                                 count: comments.length,
@@ -70,28 +77,57 @@ export async function GET(request) {
                                 source: 'Reddit Direct API'
                             });
                         }
+                    } else if (isRSS) {
+                        const rssText = await response.text();
+                        const $rss = cheerio.load(rssText, { xmlMode: true });
+                        const postTitle = $rss('entry > title').first().text();
+                        const comments = [];
+
+                        $rss('entry').each((i, el) => {
+                            if (i === 0) return; // Skip the post entry itself
+                            const author = $rss(el).find('author > name').text().replace(/^\/u\//, '');
+                            const contentHtml = $rss(el).find('content').text();
+                            const $content = cheerio.load(contentHtml);
+                            const body = $content.text().trim();
+
+                            if (author && !["[deleted]", "[removed]", "AutoModerator"].includes(author) && body.split(/\s+/).length >= 3) {
+                                comments.push({ author, score: 'N/A', body: body.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim() });
+                            }
+                        });
+
+                        if (comments.length > 0) {
+                            console.log(`[RedditScraper] Success via RSS Fallback`);
+                            return NextResponse.json({
+                                title: postTitle || 'Reddit Discussion',
+                                count: comments.length,
+                                comments: comments,
+                                source: 'Reddit RSS Feed'
+                            });
+                        }
                     } else {
                         html = await response.text();
-                        // Verification 1: Not a known bot challenge page
                         const isBot = html.includes('not a bot!') || html.includes('captcha') || html.includes('network security');
-                        // Verification 2: Actually contains comment elements
                         const hasComments = html.includes('class="comment"') || html.includes('class=\'comment\'');
 
                         if (!isBot && hasComments) {
+                            console.log(`[RedditScraper] Success via Proxy: ${instance}`);
                             successInstance = instance;
                             break;
+                        } else {
+                            console.warn(`[RedditScraper] Proxy ${instance} returned no comments or bot challenge`);
                         }
                     }
+                } else {
+                    console.warn(`[RedditScraper] ${instance} returned HTTP ${response.status}`);
                 }
             } catch (e) {
-                console.warn(`Failed to fetch from ${instance}:`, e.message);
+                console.warn(`[RedditScraper] Error fetching from ${instance}:`, e.message);
                 continue;
             }
         }
 
         if (!html || !successInstance) {
-            // Signal to the frontend that server-side fetching is blocked (likely Vercel Datacenter IP block)
-            // This triggers the client-side Fetch fallback using the user's residential IP.
+            console.error(`[RedditScraper] ALL BACKEND ATTEMPTS FAILED`);
             return NextResponse.json({
                 error: "Vercel 服务器 IP 被 Reddit 限制 (Datacenter Blocked)",
                 needsClientSideFallback: true,
