@@ -47,9 +47,10 @@ export default function RedditScraperPage() {
     // Phase 2: Client-Side Browser Fallback (Uses User Residential IP)
     const runClientSideFallback = async (postId, originalUrl) => {
         const corsProxies = [
-            (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-            (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
-            (url) => `https://api.codetabs.com/v1/proxy?quest=${url}`
+            (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+            (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+            (url) => `https://api.codetabs.com/v1/proxy?quest=${url}`,
+            (url) => `https://thingproxy.freeboard.io/fetch/${url}`
         ];
 
         let success = false;
@@ -60,13 +61,17 @@ export default function RedditScraperPage() {
                 const targetUrl = `https://www.reddit.com/comments/${postId}.json`;
                 const proxyUrl = getProxyUrl(targetUrl);
 
-                const response = await fetch(proxyUrl);
+                // Add a timeout to avoid hanging on a bad proxy
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+                const response = await fetch(proxyUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if (!response.ok) continue;
 
-                const data = await response.json();
-                // AllOrigins returns valid JSON inside 'contents' string
-                const rawContents = typeof data === 'string' ? data : (data.contents || JSON.stringify(data));
-                redditJson = typeof rawContents === 'string' ? JSON.parse(rawContents) : rawContents;
+                const data = await response.text();
+                redditJson = JSON.parse(data);
 
                 if (redditJson && Array.isArray(redditJson) && redditJson[0]) {
                     success = true;
@@ -79,7 +84,7 @@ export default function RedditScraperPage() {
         }
 
         if (!success || !redditJson) {
-            setError('本地抓取也失败了。这通常是因为 Reddit 暂时屏蔽了此类自动抓取，请稍后刷新重试。');
+            setError('浏览器本地代理抓取失败。这通常是由于您的网络坏境（如防火墙或广告拦截插件）阻断了跨域请求。请尝试刷新页面或换个网络再试。');
             setLoading(false);
             setFallbackStatus('');
             return;

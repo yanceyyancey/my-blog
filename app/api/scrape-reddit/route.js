@@ -19,9 +19,10 @@ export async function GET(request) {
 
         const postId = match[1];
 
-        // Use an extensive Redlib frontend array for fallback redundancy
-        // Including multiple domains to increase chances of finding a non-blocked datacenter node
+        // Strategy: First try direct Reddit fetch (works on local/residential IPs).
+        // If that fails (Vercel/Datacenter block), rotate through Redlib proxies.
         const instances = [
+            'https://www.reddit.com',
             'https://l.opnxng.com',
             'https://redlib.r4fo.com',
             'https://red.artemislena.eu',
@@ -33,7 +34,6 @@ export async function GET(request) {
             'https://redlib.ducks.party',
             'https://redlib.catsarch.com',
             'https://redlib.copy.sh',
-            'https://redlib.v- some.xyz'
         ];
 
         let html = null;
@@ -41,30 +41,51 @@ export async function GET(request) {
 
         for (const instance of instances) {
             try {
-                // Notice we omit the subreddit. Redlib handles the redirect/localization internally.
-                const targetUrl = `${instance}/comments/${postId}`;
+                // Special case for direct Reddit: fetch the .json immediately
+                const isDirect = instance === 'https://www.reddit.com';
+                const targetUrl = isDirect ? `${instance}/comments/${postId}.json` : `${instance}/comments/${postId}`;
 
-                // Use native fetch but with carefully selected residential Firefox headers
-                // Firefox is often scrutinised less aggressively than Chrome TLS fingerprints.
                 const response = await fetch(targetUrl, {
-                    headers: {
+                    headers: isDirect ? { 'User-Agent': 'curl/7.81.0' } : {
                         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0',
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.5',
                     },
                     next: { revalidate: 0 }
                 });
 
                 if (response.ok) {
-                    html = await response.text();
-                    // Verification 1: Not a known bot challenge page
-                    const isBot = html.includes('not a bot!') || html.includes('captcha') || html.includes('network security');
-                    // Verification 2: Actually contains comment elements
-                    const hasComments = html.includes('class="comment"') || html.includes('class=\'comment\'');
+                    if (isDirect) {
+                        const directData = await response.json();
+                        // If direct JSON works, return it immediately with a special structure
+                        const postInfo = directData[0].data.children[0].data;
+                        const comments = directData[1].data.children
+                            .filter(child => child.kind === 't1')
+                            .map(child => ({
+                                author: child.data.author,
+                                score: child.data.score || 0,
+                                body: child.data.body || ''
+                            }))
+                            .filter(c => c.author && !["[deleted]", "[removed]", "AutoModerator"].includes(c.author) && c.body.split(/\s+/).length >= 3);
 
-                    if (!isBot && hasComments) {
-                        successInstance = instance;
-                        break;
+                        if (comments.length > 0) {
+                            return NextResponse.json({
+                                title: postInfo.title,
+                                count: comments.length,
+                                comments: comments.map(c => ({ ...c, body: c.body.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim() })),
+                                source: 'Reddit Direct API'
+                            });
+                        }
+                    } else {
+                        html = await response.text();
+                        // Verification 1: Not a known bot challenge page
+                        const isBot = html.includes('not a bot!') || html.includes('captcha') || html.includes('network security');
+                        // Verification 2: Actually contains comment elements
+                        const hasComments = html.includes('class="comment"') || html.includes('class=\'comment\'');
+
+                        if (!isBot && hasComments) {
+                            successInstance = instance;
+                            break;
+                        }
                     }
                 }
             } catch (e) {
