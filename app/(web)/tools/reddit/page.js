@@ -46,17 +46,46 @@ export default function RedditScraperPage() {
 
     // Phase 2: Client-Side Browser Fallback (Uses User Residential IP)
     const runClientSideFallback = async (postId, originalUrl) => {
+        const corsProxies = [
+            (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+            (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
+            (url) => `https://api.codetabs.com/v1/proxy?quest=${url}`
+        ];
+
+        let success = false;
+        let redditJson = null;
+
+        for (const getProxyUrl of corsProxies) {
+            try {
+                const targetUrl = `https://www.reddit.com/comments/${postId}.json`;
+                const proxyUrl = getProxyUrl(targetUrl);
+
+                const response = await fetch(proxyUrl);
+                if (!response.ok) continue;
+
+                const data = await response.json();
+                // AllOrigins returns valid JSON inside 'contents' string
+                const rawContents = typeof data === 'string' ? data : (data.contents || JSON.stringify(data));
+                redditJson = typeof rawContents === 'string' ? JSON.parse(rawContents) : rawContents;
+
+                if (redditJson && Array.isArray(redditJson) && redditJson[0]) {
+                    success = true;
+                    break;
+                }
+            } catch (err) {
+                console.warn('CORS Proxy failed:', err);
+                continue;
+            }
+        }
+
+        if (!success || !redditJson) {
+            setError('本地抓取也失败了。这通常是因为 Reddit 暂时屏蔽了此类自动抓取，请稍后刷新重试。');
+            setLoading(false);
+            setFallbackStatus('');
+            return;
+        }
+
         try {
-            // Use a community CORS proxy to fetch the raw JSON from Reddit directly since Vercel is blocked.
-            // allorigins.win is a free service that allows cross-origin fetches in the browser.
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.reddit.com/comments/${postId}.json`)}`;
-
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error('本地备份抓取也失败了，Reddit 可能开启了严格防火墙。');
-
-            const proxyData = await response.json();
-            const redditJson = JSON.parse(proxyData.contents);
-
             // Basic parsing of Reddit JSON structure (post is [0], comments are [1])
             const postInfo = redditJson[0].data.children[0].data;
             const commentsContainer = redditJson[1].data.children;
@@ -103,7 +132,7 @@ export default function RedditScraperPage() {
             setFallbackStatus('Success: 本地代理抓取已完成');
 
         } catch (err) {
-            setError(`本地抓取失败: ${err.message}`);
+            setError(`解析抓取内容失败: ${err.message}`);
         } finally {
             setLoading(false);
             setFallbackStatus('');

@@ -57,8 +57,12 @@ export async function GET(request) {
 
                 if (response.ok) {
                     html = await response.text();
-                    // Basic sanity check: did cloudflare/fastly intercept with a Bot Challenge?
-                    if (!html.includes('Making sure you\'re not a bot!')) {
+                    // Verification 1: Not a known bot challenge page
+                    const isBot = html.includes('not a bot!') || html.includes('captcha') || html.includes('network security');
+                    // Verification 2: Actually contains comment elements
+                    const hasComments = html.includes('class="comment"') || html.includes('class=\'comment\'');
+
+                    if (!isBot && hasComments) {
                         successInstance = instance;
                         break;
                     }
@@ -126,9 +130,13 @@ export async function GET(request) {
         });
 
         if (extracted.length === 0) {
+            // If server-side finds 0 comments, it's safer to try the browser-side fallback
+            // since the proxy output might be malformed or hidden.
             return NextResponse.json({
-                error: "成功抓取，但该帖子下没有任何符合质量条件的有效评论（可能都是机器人或被踩折叠的短回复）。"
-            }, { status: 404 });
+                error: "服务器端未能提取到有效评论，正在尝试浏览器本地模式...",
+                needsClientSideFallback: true,
+                postId: postId
+            }, { status: 403 });
         }
 
         return NextResponse.json({
