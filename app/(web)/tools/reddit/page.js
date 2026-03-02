@@ -9,6 +9,7 @@ export default function RedditScraperPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [result, setResult] = useState(null);
+    const [fallbackStatus, setFallbackStatus] = useState('');
 
     const handleScrape = async (e) => {
         e.preventDefault();
@@ -17,10 +18,19 @@ export default function RedditScraperPage() {
         setLoading(true);
         setError(null);
         setResult(null);
+        setFallbackStatus('');
 
         try {
+            // Step 1: Attempt Server-Side Scraping (Vercel Backend)
             const res = await fetch(`/api/scrape-reddit?url=${encodeURIComponent(url)}`);
             const data = await res.json();
+
+            // Step 2: Check for Server IP blocks (Needs Client Fallback)
+            if (data.needsClientSideFallback) {
+                setFallbackStatus('Vercel 服务器已被限流，正在尝试从您的本地浏览器抓取 (Hybrid Mode)...');
+                await runClientSideFallback(data.postId, url);
+                return;
+            }
 
             if (!res.ok) {
                 throw new Error(data.error || '抓取失败，请检查链接或稍后再试');
@@ -30,7 +40,66 @@ export default function RedditScraperPage() {
         } catch (err) {
             setError(err.message);
         } finally {
+            if (!fallbackStatus) setLoading(false);
+        }
+    };
+
+    // Phase 2: Client-Side Browser Fallback (Uses User Residential IP)
+    const runClientSideFallback = async (postId, originalUrl) => {
+        try {
+            // Use a community CORS proxy to fetch the raw JSON from Reddit directly since Vercel is blocked.
+            // allorigins.win is a free service that allows cross-origin fetches in the browser.
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.reddit.com/comments/${postId}.json`)}`;
+
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error('本地备份抓取也失败了，Reddit 可能开启了严格防火墙。');
+
+            const proxyData = await response.json();
+            const redditJson = JSON.parse(proxyData.contents);
+
+            // Basic parsing of Reddit JSON structure (post is [0], comments are [1])
+            const postInfo = redditJson[0].data.children[0].data;
+            const commentsContainer = redditJson[1].data.children;
+
+            const extracted = [];
+
+            // Apply similar high-quality filtering logic as the backend
+            commentsContainer.forEach(child => {
+                if (child.kind === 't1') {
+                    const c = child.data;
+                    if (c.author && !["[deleted]", "[removed]", "AutoModerator"].includes(c.author) &&
+                        c.body && !["[deleted]", "[removed]"].includes(c.body) &&
+                        (c.score === undefined || c.score >= 0)) {
+
+                        if (c.body.split(/\s+/).length >= 3) {
+                            const cleanedBody = c.body.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+                            extracted.push({
+                                author: c.author,
+                                score: c.score || 0,
+                                body: cleanedBody
+                            });
+                        }
+                    }
+                }
+            });
+
+            if (extracted.length === 0) {
+                throw new Error('成功从浏览器抓取，但该帖子下没有发现符合质量条件的有效评论');
+            }
+
+            setResult({
+                title: postInfo.title,
+                count: extracted.length,
+                comments: extracted,
+                source: 'Browser-Direct (Hybrid Local)'
+            });
+            setFallbackStatus('Success: 本地代理抓取已完成');
+
+        } catch (err) {
+            setError(`本地抓取失败: ${err.message}`);
+        } finally {
             setLoading(false);
+            setFallbackStatus('');
         }
     };
 
@@ -96,11 +165,18 @@ export default function RedditScraperPage() {
                                     <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
                                     <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                Mining...
+                                {fallbackStatus ? 'Capturing Local...' : 'Extracting...'}
                             </>
                         ) : 'Extract Now'}
                     </button>
                 </form>
+
+                {fallbackStatus && (
+                    <div className={styles.errorBox} style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent)' }}>
+                        <div className={styles.pulseDot}></div>
+                        {fallbackStatus}
+                    </div>
+                )}
 
                 {error && (
                     <div className={styles.errorBox}>
@@ -117,13 +193,13 @@ export default function RedditScraperPage() {
                             <div className={styles.resultInfo}>
                                 <div className={styles.statusBadge}>
                                     <span className={styles.pulseDot}></span>
-                                    Extraction Complete
+                                    {result.source.includes('Browser') ? 'Hybrid (Safe) Mode Active' : 'Extraction Complete'}
                                 </div>
                                 <h3 className={styles.resultTitle} title={result.title}>
                                     {result.title}
                                 </h3>
                                 <p className={styles.resultMeta}>
-                                    Found <span className={styles.highlightCount}>{result.count}</span> high-quality comments matching filters.
+                                    Found <span className={styles.highlightCount}>{result.count}</span> high-quality comments via <span className={styles.highlightCount}>{result.source}</span>.
                                 </p>
                             </div>
 

@@ -19,12 +19,21 @@ export async function GET(request) {
 
         const postId = match[1];
 
-        // Use a reliable Redlib frontend array for fallback redundancy
+        // Use an extensive Redlib frontend array for fallback redundancy
+        // Including multiple domains to increase chances of finding a non-blocked datacenter node
         const instances = [
             'https://l.opnxng.com',
-            'https://redlib.ducks.party',
+            'https://redlib.r4fo.com',
+            'https://red.artemislena.eu',
+            'https://redlib.nadeko.net',
             'https://redlib.perennialte.ch',
-            'https://redlib.4o1x5.dev'
+            'https://redlib.privacyredirect.com',
+            'https://redlib.privadency.com',
+            'https://redlib.4o1x5.dev',
+            'https://redlib.ducks.party',
+            'https://redlib.catsarch.com',
+            'https://redlib.copy.sh',
+            'https://redlib.v- some.xyz'
         ];
 
         let html = null;
@@ -35,9 +44,14 @@ export async function GET(request) {
                 // Notice we omit the subreddit. Redlib handles the redirect/localization internally.
                 const targetUrl = `${instance}/comments/${postId}`;
 
-                // Do NOT spoof Chrome UA here! Node fetch is less likely to be fingerprinted as a "fake browser" if it just uses default Node JS behavior 
-                // compared to providing a Chrome UA with a Node TLS fingerprint!
+                // Use native fetch but with carefully selected residential Firefox headers
+                // Firefox is often scrutinised less aggressively than Chrome TLS fingerprints.
                 const response = await fetch(targetUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                    },
                     next: { revalidate: 0 }
                 });
 
@@ -56,7 +70,13 @@ export async function GET(request) {
         }
 
         if (!html || !successInstance) {
-            return NextResponse.json({ error: "所有代理节点均被限制或帖子已被删除。请稍后再试，或检查帖子是否仍在 Reddit 存活。" }, { status: 502 });
+            // Signal to the frontend that server-side fetching is blocked (likely Vercel Datacenter IP block)
+            // This triggers the client-side Fetch fallback using the user's residential IP.
+            return NextResponse.json({
+                error: "Vercel 服务器 IP 被 Reddit 限制 (Datacenter Blocked)",
+                needsClientSideFallback: true,
+                postId: postId
+            }, { status: 403 });
         }
 
         const $ = cheerio.load(html);
@@ -88,7 +108,7 @@ export async function GET(request) {
 
             if (author && !["[deleted]", "[removed]", "AutoModerator"].includes(author) &&
                 body && !["[deleted]", "[removed]"].includes(body) &&
-                score >= 1) {
+                score >= 0) {
 
                 // Extra basic filtering
                 if (body.split(/\s+/).length >= 3) {
