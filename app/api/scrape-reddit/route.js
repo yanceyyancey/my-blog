@@ -91,24 +91,31 @@ export async function GET(request) {
 
             // Find score (sometimes stored in span[title="Score"] or .score or .comment_score)
             let scoreStr = $(el).find('.comment_score').first().text().trim();
+            if (!scoreStr) {
+                // Fallback: search for any span with "Score" in title
+                scoreStr = $(el).find('span[title*="Score"]').first().text().trim();
+            }
 
-            // Handle "1.2k" score parsing
+            // Handle "1.2k" or "1,200" score parsing
             let score = 0;
-            if (scoreStr) {
+            if (scoreStr && scoreStr !== '•') {
                 if (scoreStr.toLowerCase().includes('k')) {
-                    score = parseFloat(scoreStr) * 1000;
+                    score = Math.round(parseFloat(scoreStr) * 1000);
                 } else {
-                    scoreStr = scoreStr.replace(/,/g, '').replace(/[^0-9.-]/g, '');
-                    score = parseInt(scoreStr, 10) || 0;
+                    let cleanScore = scoreStr.replace(/,/g, '').replace(/[^0-9.-]/g, '');
+                    score = parseInt(cleanScore, 10) || 0;
                 }
             }
 
             // Find body text inside comment_body
             let body = $(el).find('.comment_body').first().text().trim();
 
-            if (author && !["[deleted]", "[removed]", "AutoModerator"].includes(author) &&
-                body && !["[deleted]", "[removed]"].includes(body) &&
-                score >= 0) {
+            // Robust Author check: handle both u/name and name
+            const cleanAuthor = author.replace(/^u\//, '').toLowerCase();
+            const isBlacklisted = ["deleted", "removed", "automoderator"].includes(cleanAuthor);
+
+            if (author && !isBlacklisted &&
+                body && !["[deleted]", "[removed]"].includes(body)) {
 
                 // Extra basic filtering
                 if (body.split(/\s+/).length >= 3) {

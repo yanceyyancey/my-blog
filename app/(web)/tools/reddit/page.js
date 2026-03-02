@@ -67,15 +67,22 @@ export default function RedditScraperPage() {
             commentsContainer.forEach(child => {
                 if (child.kind === 't1') {
                     const c = child.data;
-                    if (c.author && !["[deleted]", "[removed]", "AutoModerator"].includes(c.author) &&
-                        c.body && !["[deleted]", "[removed]"].includes(c.body) &&
-                        (c.score === undefined || c.score >= 0)) {
+                    const author = c.author || '';
+                    const body = c.body || '';
+                    const score = c.score || 0;
 
-                        if (c.body.split(/\s+/).length >= 3) {
-                            const cleanedBody = c.body.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+                    // Robust Author check: handle both u/name and name
+                    const cleanAuthor = author.replace(/^u\//, '').toLowerCase();
+                    const isBlacklisted = ["deleted", "removed", "automoderator"].includes(cleanAuthor);
+
+                    if (author && !isBlacklisted &&
+                        body && !["[deleted]", "[removed]"].includes(body)) {
+
+                        if (body.split(/\s+/).length >= 3) {
+                            const cleanedBody = body.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
                             extracted.push({
-                                author: c.author,
-                                score: c.score || 0,
+                                author: author,
+                                score: score,
                                 body: cleanedBody
                             });
                         }
