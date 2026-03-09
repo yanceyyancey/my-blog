@@ -4,10 +4,10 @@ import { notFound } from 'next/navigation';
 import Comments from '@/components/Comments';
 import ArticleContent from '@/components/ArticleContent';
 
-// Pre-generate all blog post pages at build time so Notion is NOT called on every user request
+// Return empty array: posts are rendered on-demand (ISR) instead of at build time.
+// This prevents Notion API rate limiting from mass-fetching all posts during every deploy.
 export async function generateStaticParams() {
-    const allPostIds = await getAllPostIds();
-    return allPostIds.map(({ params }) => ({ slug: params.slug }));
+    return [];
 }
 
 export async function generateMetadata({ params }) {
