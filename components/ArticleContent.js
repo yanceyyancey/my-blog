@@ -63,19 +63,31 @@ export default function ArticleContent({ contentHtml }) {
 
         renderMermaid();
 
-        // ── 2. TABLE STYLES (fixed, no horizontal drag) ─────────────────────────
+        // ── 2. TABLE STYLES ─────────────────────────────────────────────────────
         const tables = ref.current.querySelectorAll('table');
         tables.forEach(table => {
+            // Wrap in a div for clean borders and to keep table within column width
+            if (!table.parentElement.classList.contains('table-scroll-wrapper')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-scroll-wrapper';
+                Object.assign(wrapper.style, {
+                    width: '100%',
+                    margin: '2rem 0',
+                    border: '1px solid var(--border)',
+                    borderRadius: '16px',
+                    boxShadow: 'var(--shadow-sm)',
+                    overflow: 'hidden',  // clips the table inside rounded corners
+                });
+                table.parentNode.insertBefore(wrapper, table);
+                wrapper.appendChild(table);
+            }
+
             Object.assign(table.style, {
                 width: '100%',
                 borderCollapse: 'collapse',
                 fontSize: '0.95rem',
-                margin: '2rem 0',
-                border: '1px solid var(--border)',
-                borderRadius: '16px',
-                boxShadow: 'var(--shadow-sm)',
-                tableLayout: 'fixed',
-                wordBreak: 'break-word',
+                margin: '0',
+                tableLayout: 'auto',  // let browser size columns by content
             });
 
             table.querySelectorAll('th').forEach(th => {
@@ -86,6 +98,8 @@ export default function ArticleContent({ contentHtml }) {
                     padding: '0.8rem 1.2rem',
                     borderBottom: '2px solid var(--border)',
                     textAlign: 'left',
+                    overflowWrap: 'break-word',  // only break if truly needed
+                    minWidth: '80px',
                 });
             });
 
@@ -95,7 +109,8 @@ export default function ArticleContent({ contentHtml }) {
                     borderBottom: '1px solid var(--border)',
                     color: 'var(--text-secondary)',
                     verticalAlign: 'top',
-                    lineHeight: '1.6',
+                    lineHeight: '1.7',
+                    overflowWrap: 'break-word',
                 });
             });
 
