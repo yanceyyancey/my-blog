@@ -15,6 +15,7 @@
     "date-fns": "^4.1.0",
     "got-scraping": "^4.2.1",
     "gray-matter": "^4.0.3",
+    "mermaid": "^11.13.0",
     "next": "16.1.6",
     "notion-to-md": "^3.1.9",
     "outstatic": "^2.1.0",

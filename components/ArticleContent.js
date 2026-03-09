@@ -8,7 +8,50 @@ export default function ArticleContent({ contentHtml }) {
     useEffect(() => {
         if (!ref.current) return;
 
-        // ── 1. TABLE STYLES (fixed, no scrolling) ──────────────────────────────
+        // ── 1. MERMAID DIAGRAMS ─────────────────────────────────────────────────
+        // Detect <pre><code class="language-mermaid"> blocks and render them visually
+        const renderMermaid = async () => {
+            const mermaidBlocks = ref.current.querySelectorAll('pre code.language-mermaid, code.language-mermaid');
+            if (mermaidBlocks.length === 0) return;
+
+            const mermaid = (await import('mermaid')).default;
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'neutral',
+                fontFamily: 'inherit',
+                fontSize: 14,
+            });
+
+            mermaidBlocks.forEach(async (codeEl, index) => {
+                const pre = codeEl.closest('pre') || codeEl;
+                const graphDefinition = codeEl.textContent;
+                const id = `mermaid-${Date.now()}-${index}`;
+
+                try {
+                    const { svg } = await mermaid.render(id, graphDefinition);
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'mermaid-wrapper';
+                    wrapper.style.cssText = [
+                        'width:100%',
+                        'overflow-x:auto',
+                        'margin:2rem 0',
+                        'padding:1.5rem',
+                        'background:var(--bg-subtle)',
+                        'border:1px solid var(--border)',
+                        'border-radius:16px',
+                        'text-align:center',
+                    ].join(';');
+                    wrapper.innerHTML = svg;
+                    pre.replaceWith(wrapper);
+                } catch (err) {
+                    console.warn('Mermaid render error:', err);
+                }
+            });
+        };
+
+        renderMermaid();
+
+        // ── 2. TABLE STYLES (fixed, no horizontal drag) ─────────────────────────
         const tables = ref.current.querySelectorAll('table');
         tables.forEach(table => {
             Object.assign(table.style, {
@@ -19,8 +62,8 @@ export default function ArticleContent({ contentHtml }) {
                 border: '1px solid var(--border)',
                 borderRadius: '16px',
                 boxShadow: 'var(--shadow-sm)',
-                tableLayout: 'fixed',       // Prevents draggable/horizontal scroll
-                wordBreak: 'break-word',    // Wrap long text instead of expanding
+                tableLayout: 'fixed',
+                wordBreak: 'break-word',
             });
 
             table.querySelectorAll('th').forEach(th => {
@@ -44,7 +87,6 @@ export default function ArticleContent({ contentHtml }) {
                 });
             });
 
-            // Remove border from last row
             const rows = table.querySelectorAll('tr');
             if (rows.length > 0) {
                 rows[rows.length - 1].querySelectorAll('td').forEach(td => {
@@ -52,15 +94,12 @@ export default function ArticleContent({ contentHtml }) {
                 });
             }
 
-            // Alternating row colors
             table.querySelectorAll('tbody tr').forEach((row, i) => {
                 if (i % 2 === 1) row.style.background = 'var(--bg-secondary)';
             });
         });
 
-        // ── 2. IMAGE FIX ────────────────────────────────────────────────────────
-        // notion-to-md sometimes outputs images as plain text or broken markdown.
-        // We force every <img> to display properly.
+        // ── 3. IMAGE STYLES ─────────────────────────────────────────────────────
         const imgs = ref.current.querySelectorAll('img');
         imgs.forEach(img => {
             Object.assign(img.style, {
@@ -74,7 +113,6 @@ export default function ArticleContent({ contentHtml }) {
             img.setAttribute('loading', 'lazy');
         });
 
-        // Fix paragraphs that contain ONLY an image — remove extra padding/margin
         ref.current.querySelectorAll('p').forEach(p => {
             if (p.children.length === 1 && p.children[0].tagName === 'IMG') {
                 p.style.margin = '0';
