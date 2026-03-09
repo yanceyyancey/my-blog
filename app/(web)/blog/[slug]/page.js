@@ -2,6 +2,7 @@ import { getPostData, getAllPostIds } from '@/lib/posts';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import Comments from '@/components/Comments';
+import ArticleContent from '@/components/ArticleContent';
 
 // Pre-generate all blog post pages at build time so Notion is NOT called on every user request
 export async function generateStaticParams() {
@@ -70,10 +71,7 @@ export default async function Post({ params }) {
                     </div>
                 </header>
 
-                <div
-                    className="markdown-content"
-                    dangerouslySetInnerHTML={{ __html: postData.contentHtml }}
-                />
+                <ArticleContent contentHtml={postData.contentHtml} />
 
                 <div style={{ marginTop: '5rem', paddingTop: '3rem', borderTop: '1px solid var(--border)' }}>
                     <Comments />
