@@ -66,7 +66,7 @@ export default function ArticleContent({ contentHtml }) {
         // ── 2. TABLE STYLES ─────────────────────────────────────────────────────
         const tables = ref.current.querySelectorAll('table');
         tables.forEach(table => {
-            // Wrap in a div for clean borders and to keep table within column width
+            // Wrap table for contained horizontal scroll — page stays fixed, table scrolls
             if (!table.parentElement.classList.contains('table-scroll-wrapper')) {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'table-scroll-wrapper';
@@ -76,7 +76,8 @@ export default function ArticleContent({ contentHtml }) {
                     border: '1px solid var(--border)',
                     borderRadius: '16px',
                     boxShadow: 'var(--shadow-sm)',
-                    overflow: 'hidden',  // clips the table inside rounded corners
+                    overflowX: 'auto',   // scroll ONLY within this box
+                    WebkitOverflowScrolling: 'touch',
                 });
                 table.parentNode.insertBefore(wrapper, table);
                 wrapper.appendChild(table);
@@ -84,10 +85,11 @@ export default function ArticleContent({ contentHtml }) {
 
             Object.assign(table.style, {
                 width: '100%',
+                minWidth: 'max-content',  // let table be as wide as it needs to be
                 borderCollapse: 'collapse',
                 fontSize: '0.95rem',
                 margin: '0',
-                tableLayout: 'auto',  // let browser size columns by content
+                tableLayout: 'auto',
             });
 
             table.querySelectorAll('th').forEach(th => {
