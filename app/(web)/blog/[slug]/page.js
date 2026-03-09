@@ -24,7 +24,7 @@ export async function generateMetadata({ params }) {
     }
 }
 
-export const revalidate = 300; // Serve cached static page for up to 5 minutes
+export const revalidate = 30; // Refresh cached page every 30 seconds
 export const dynamicParams = true; // Allow slugs not in generateStaticParams (new posts) to be rendered on demand
 
 
