@@ -98,8 +98,9 @@ export default function ArticleContent({ contentHtml }) {
                     padding: '0.8rem 1.2rem',
                     borderBottom: '2px solid var(--border)',
                     textAlign: 'left',
-                    overflowWrap: 'break-word',  // only break if truly needed
-                    minWidth: '80px',
+                    overflowWrap: 'break-word',
+                    whiteSpace: 'normal',   // allow header text to wrap to next line
+                    lineHeight: '1.5',
                 });
             });
 
