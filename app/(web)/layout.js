@@ -1,6 +1,8 @@
 import '../globals.css'
 import Link from 'next/link'
 import Navigation from '@/components/Navigation'
+import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata = {
   title: 'My Premium Blog',
@@ -22,6 +24,9 @@ export default function RootLayout({ children }) {
             <p>© {new Date().getFullYear()} My Blog.</p>
           </div>
         </footer>
+
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   )
