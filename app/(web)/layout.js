@@ -5,8 +5,12 @@ import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata = {
-  title: 'My Premium Blog',
-  description: 'A modern, luxurious personal blog built with Next.js',
+  metadataBase: new URL('https://www.yancey.blog'),
+  title: {
+    default: 'yancey | 专注保姆级教程，小白福利站',
+    template: '%s | yancey.blog'
+  },
+  description: '专注保姆级教程，小白福利站。覆盖日常任务：总结、改写、代码解释、轻量 RAG、工具调用。',
 }
 
 export default function RootLayout({ children }) {
