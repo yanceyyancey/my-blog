@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import SearchModal from './SearchModal';
+import ThemeToggle from './ThemeToggle';
 
 export default function Navigation() {
     const pathname = usePathname();
@@ -45,6 +46,9 @@ export default function Navigation() {
                     </Link>
                     <nav>
                         <ul className="nav-links">
+                            <li>
+                                <ThemeToggle />
+                            </li>
                             <li>
                                 <button onClick={() => setIsSearchOpen(true)} className="nav-link" style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><span>搜索</span>
