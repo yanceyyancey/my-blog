@@ -5,12 +5,22 @@ import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 export default function InteractiveBoy() {
   const dotLottieCallback = useCallback((dotLottie) => {
     if (dotLottie) {
-      dotLottie.addEventListener('load', () => {
+      const startStateMachine = () => {
         if (dotLottie.isLoaded) {
-          dotLottie.stateMachineLoad('StateMachine1');
-          dotLottie.stateMachineStart();
+          try {
+            dotLottie.stateMachineLoad('StateMachine1');
+            dotLottie.stateMachineStart();
+          } catch (err) {
+            console.error('State machine failed to start:', err);
+          }
         }
-      });
+      };
+
+      if (dotLottie.isLoaded) {
+        startStateMachine();
+      } else {
+        dotLottie.addEventListener('load', startStateMachine);
+      }
     }
   }, []);
 
