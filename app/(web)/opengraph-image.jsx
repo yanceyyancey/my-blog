@@ -11,39 +11,59 @@ export default async function Image() {
         (
             <div
                 style={{
-                    background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+            <div
+                style={{
+                    background: '#000000',
                     width: '100%',
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    padding: '80px',
+                    position: 'relative',
                 }}
             >
-                <div style={{ display: 'flex', border: '2px solid rgba(255,255,255,0.1)', padding: '60px 80px', borderRadius: '32px', flexDirection: 'column', alignItems: 'center', background: 'rgba(0,0,0,0.2)' }}>
-                    <div
-                        style={{
-                            fontSize: 80,
-                            fontWeight: 800,
-                            color: 'white',
-                            letterSpacing: '-0.02em',
-                            marginBottom: 20,
-                            display: 'flex',
-                        }}
-                    >
-                        yancey.blog
-                    </div>
-                    <div
-                        style={{
-                            fontSize: 36,
-                            color: '#94a3b8',
-                            fontWeight: 500,
-                            display: 'flex',
-                            textAlign: 'center',
-                        }}
-                    >
-                        专注保姆级教程，小白福利站
+                {/* Minimalist brand text */}
+                <div
+                    style={{
+                        fontSize: 120,
+                        fontWeight: 900,
+                        color: '#ffffff',
+                        letterSpacing: '-0.05em',
+                        marginBottom: 10,
+                    }}
+                >
+                    yancey
+                </div>
+                
+                {/* Subtitle */}
+                <div
+                    style={{
+                        fontSize: 32,
+                        color: '#a1a1aa',
+                        fontWeight: 400,
+                        letterSpacing: '0.15em',
+                        display: 'flex',
+                        textAlign: 'center',
+                    }}
+                >
+                    专注保姆级教程，小白福利站
+                </div>
+
+                {/* Decorative minimalist footer */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        bottom: 50,
+                        display: 'flex',
+                        width: '300px',
+                        borderTop: '2px solid #27272a',
+                        justifyContent: 'center',
+                        paddingTop: 20,
+                    }}
+                >
+                    <div style={{ color: '#52525b', fontSize: 20, letterSpacing: '0.3em', fontWeight: 600 }}>
+                        YANCEY.BLOG
                     </div>
                 </div>
             </div>
