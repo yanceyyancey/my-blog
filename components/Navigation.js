@@ -35,11 +35,11 @@ export default function Navigation() {
         };
     }, [pathname]);
 
-    const isInverted = pathname === '/' && isAtTop;
+    const hasScrolled = !isAtTop;
 
     return (
         <>
-            <header className={`header ${isInverted ? 'nav-inverted' : ''}`}>
+            <header className={`header ${hasScrolled ? 'header-scrolled' : ''}`}>
                 <div className="header-container">
                     <Link href="/" className="logo">
                         yancey

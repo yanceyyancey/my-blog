@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getSortedPostsData } from '@/lib/posts';
 import Sidebar from '@/components/Sidebar';
+import InteractiveBoy from '@/components/InteractiveBoy';
 
 export const revalidate = 300; // Regenerate every 5 minutes
 
@@ -11,13 +12,7 @@ export default async function Home() {
     return (
         <div className="home-wrapper">
             <section className="full-hero">
-                <div className="hero-content">
-                    <h1 className="hero-title">yancey</h1>
-                    <div className="hero-subtitle">
-                        <span className="typewriter-sizer">专注保姆级教程，小白福利站</span>
-                        <span className="typewriter-text">专注保姆级教程，小白福利站</span>
-                    </div>
-                </div>
+                <InteractiveBoy />
                 <div className="scroll-down">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </div>

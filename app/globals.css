@@ -254,14 +254,19 @@ main {
   background-color: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow);
+  border-bottom: 1px solid transparent;
+  box-shadow: none;
 
   z-index: 100;
   display: flex;
   align-items: center;
 
   transition: all 0.3s ease-in-out;
+}
+
+.header.header-scrolled {
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 
@@ -613,7 +618,6 @@ main {
   position: relative;
   height: 100vh;
   width: 100%;
-  /* Use overflow hidden to clip the scaled background */
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -621,33 +625,11 @@ main {
   align-items: center;
   text-align: center;
   color: white;
+  background-color: var(--bg-primary); /* Dynamically changes with dark/light mode */
+  transition: background-color 0.4s ease;
 }
 
-/* Pseudo-element for the background image */
-.full-hero::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: url('/images/hero-robot.jpg');
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-  z-index: 0;
-}
 
-.full-hero::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 1;
-}
 
 .hero-content {
   position: relative;
