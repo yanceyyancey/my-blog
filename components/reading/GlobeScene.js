@@ -3,12 +3,13 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import styles from './reading.module.css';
 
 const RADIUS = 5;
 
 // 经纬度 → 3D 坐标
-function latLonToVec3(lat, lon, r = RADIUS + 0.08) {
+function latLonToVec3(lat, lon, r = RADIUS + 0.12) {
     const phi = (90 - lat) * (Math.PI / 180);
     const theta = (lon + 180) * (Math.PI / 180);
     return new THREE.Vector3(
@@ -18,29 +19,36 @@ function latLonToVec3(lat, lon, r = RADIUS + 0.08) {
     );
 }
 
-// 国家颜色映射（波普艺术风格）
 const COUNTRY_COLORS = {
-    US: 0x7c3aed, GB: 0x06b6d4, CN: 0xf59e0b, JP: 0xec4899,
-    FR: 0x10b981, DE: 0x8b5cf6, CO: 0xf97316, IN: 0xef4444,
-    AF: 0x84cc16, IL: 0x0ea5e9, AT: 0xa78bfa,
+    US: '#7c3aed', GB: '#06b6d4', CN: '#f59e0b', JP: '#ec4899',
+    FR: '#10b981', DE: '#8b5cf6', CO: '#f97316', IN: '#ef4444',
+    AF: '#84cc16', IL: '#0ea5e9', AT: '#a78bfa',
 };
-function countryColor(code) {
-    return COUNTRY_COLORS[code] || 0x6366f1;
-}
+function getColor(code) { return COUNTRY_COLORS[code] || '#6366f1'; }
 
 export default function GlobeScene({ books, onBookClick }) {
-    const canvasRef = useRef(null);
+    const mountRef = useRef(null);
     const sceneRef = useRef(null);
 
     const init = useCallback(() => {
-        const canvas = canvasRef.current;
-        if (!canvas || sceneRef.current) return;
+        const container = mountRef.current;
+        if (!container || sceneRef.current) return;
 
-        // ── Renderer ──
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        // ── Renderer (WebGL) ──
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setClearColor(0x000000, 0);
+        container.appendChild(renderer.domElement);
+
+        // ── CSS2D Renderer (标签层) ──
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0';
+        labelRenderer.domElement.style.left = '0';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        container.appendChild(labelRenderer.domElement);
 
         // ── Scene & Camera ──
         const scene = new THREE.Scene();
@@ -51,88 +59,52 @@ export default function GlobeScene({ books, onBookClick }) {
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
-        controls.minDistance = 8;
-        controls.maxDistance = 25;
+        controls.minDistance = 7;
+        controls.maxDistance = 28;
         controls.autoRotate = true;
-        controls.autoRotateSpeed = 0.4;
+        controls.autoRotateSpeed = 0.35;
 
-        // ── 地球本体（程序化着色器）──
+        // ── 地球纹理加载 ──
+        const loader = new THREE.TextureLoader();
+
+        // 使用 NASA Blue Marble 贴图（多个备用 CDN）
+        const EARTH_TEXTURE = 'https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg';
+        const BUMP_TEXTURE = 'https://raw.githubusercontent.com/turban/webgl-earth/master/images/gebco_08_rev_elev_21600x10800.png';
+        const SPECULAR_TEXTURE = 'https://raw.githubusercontent.com/turban/webgl-earth/master/images/water_4k.png';
+
         const globeGeo = new THREE.SphereGeometry(RADIUS, 64, 64);
-        const globeMat = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0 },
-                baseColor: { value: new THREE.Color(0x0a1628) },
-                oceanColor: { value: new THREE.Color(0x0d2347) },
-                landColor: { value: new THREE.Color(0x1a3a5c) },
-                glowColor: { value: new THREE.Color(0x7c3aed) },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vPosition;
-                void main() {
-                    vUv = uv;
-                    vNormal = normalize(normalMatrix * normal);
-                    vPosition = position;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float time;
-                uniform vec3 baseColor;
-                uniform vec3 oceanColor;
-                uniform vec3 landColor;
-                uniform vec3 glowColor;
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vPosition;
 
-                // 简单噪声函数
-                float hash(vec2 p) {
-                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-                }
-                float noise(vec2 p) {
-                    vec2 i = floor(p);
-                    vec2 f = fract(p);
-                    f = f * f * (3.0 - 2.0 * f);
-                    return mix(
-                        mix(hash(i), hash(i + vec2(1,0)), f.x),
-                        mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
-                }
-
-                void main() {
-                    // 极光边缘光晕
-                    float rim = 1.0 - max(dot(vNormal, vec3(0,0,1)), 0.0);
-                    rim = pow(rim, 2.5);
-
-                    // 大陆噪声
-                    float n = noise(vUv * 8.0) * 0.5 + noise(vUv * 16.0) * 0.25 + noise(vUv * 32.0) * 0.125;
-                    float land = smoothstep(0.48, 0.52, n);
-
-                    // 经纬线网格
-                    float gridLat = abs(sin(vUv.y * 3.14159 * 18.0));
-                    float gridLon = abs(sin(vUv.x * 3.14159 * 36.0));
-                    float grid = smoothstep(0.94, 1.0, max(gridLat, gridLon)) * 0.15;
-
-                    vec3 color = mix(oceanColor, landColor, land);
-                    color = mix(color, color + vec3(grid), 1.0);
-                    color += glowColor * rim * 0.6;
-
-                    // 动态微弱脉冲
-                    float pulse = sin(time * 0.5) * 0.02 + 0.02;
-                    color += glowColor * pulse;
-
-                    gl_FragColor = vec4(color, 1.0);
-                }
-            `,
+        // 先用简单材质渲染，纹理加载后自动替换
+        const globeMat = new THREE.MeshPhongMaterial({
+            color: 0x1a4a7a,
+            emissive: 0x0a1628,
+            emissiveIntensity: 0.3,
+            shininess: 25,
         });
         const globe = new THREE.Mesh(globeGeo, globeMat);
         scene.add(globe);
 
-        // ── 大气发光层 ──
-        const atmoGeo = new THREE.SphereGeometry(RADIUS * 1.04, 32, 32);
+        loader.load(EARTH_TEXTURE, (texture) => {
+            globeMat.map = texture;
+            globeMat.color.set(0xffffff);
+            globeMat.emissiveIntensity = 0;
+            globeMat.needsUpdate = true;
+        });
+        loader.load(BUMP_TEXTURE, (bump) => {
+            globeMat.bumpMap = bump;
+            globeMat.bumpScale = 0.05;
+            globeMat.needsUpdate = true;
+        });
+        loader.load(SPECULAR_TEXTURE, (spec) => {
+            globeMat.specularMap = spec;
+            globeMat.specular = new THREE.Color(0x4488aa);
+            globeMat.needsUpdate = true;
+        });
+
+        // ── 大气光晕层 ──
+        const atmoGeo = new THREE.SphereGeometry(RADIUS * 1.025, 32, 32);
         const atmoMat = new THREE.ShaderMaterial({
-            uniforms: { glowColor: { value: new THREE.Color(0x4f46e5) } },
+            uniforms: { glowColor: { value: new THREE.Color(0x4080ff) } },
             vertexShader: `
                 varying vec3 vNormal;
                 void main() {
@@ -144,8 +116,8 @@ export default function GlobeScene({ books, onBookClick }) {
                 uniform vec3 glowColor;
                 varying vec3 vNormal;
                 void main() {
-                    float intensity = pow(0.8 - dot(vNormal, vec3(0,0,1)), 3.0);
-                    gl_FragColor = vec4(glowColor, intensity * 0.5);
+                    float intensity = pow(0.75 - dot(vNormal, vec3(0,0,1)), 4.0);
+                    gl_FragColor = vec4(glowColor, intensity * 0.55);
                 }
             `,
             side: THREE.FrontSide,
@@ -157,63 +129,139 @@ export default function GlobeScene({ books, onBookClick }) {
 
         // ── 星空背景 ──
         const starGeo = new THREE.BufferGeometry();
-        const starPos = new Float32Array(3000 * 3);
-        for (let i = 0; i < 3000 * 3; i++) starPos[i] = (Math.random() - 0.5) * 600;
+        const starPos = new Float32Array(4000 * 3);
+        for (let i = 0; i < 4000 * 3; i++) starPos[i] = (Math.random() - 0.5) * 800;
         starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
         scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
-            color: 0xffffff, size: 0.25, transparent: true, opacity: 0.6
+            color: 0xffffff, size: 0.3, transparent: true, opacity: 0.55
         })));
 
         // ── 光源 ──
-        scene.add(new THREE.AmbientLight(0x334466, 1.5));
-        const dirLight = new THREE.DirectionalLight(0x7c9eff, 2);
-        dirLight.position.set(10, 5, 10);
-        scene.add(dirLight);
+        const ambient = new THREE.AmbientLight(0x404060, 1.8);
+        scene.add(ambient);
+        const sunLight = new THREE.DirectionalLight(0xfff5e0, 2.5);
+        sunLight.position.set(20, 10, 15);
+        scene.add(sunLight);
+        const rimLight = new THREE.DirectionalLight(0x3060ff, 0.5);
+        rimLight.position.set(-10, -5, -10);
+        scene.add(rimLight);
 
-        // ── 书籍标记点 ──
-        const booksByCountry = {};
+        // ── 书籍标记点（按国家聚合）──
+        const countryMap = {};
         books.forEach(b => {
             if (!b.lat && !b.lon) return;
-            const key = `${b.lat},${b.lon}`;
-            if (!booksByCountry[key]) booksByCountry[key] = { books: [], lat: b.lat, lon: b.lon, countryCode: b.countryCode };
-            booksByCountry[key].books.push(b);
+            const key = b.countryCode || `${b.lat},${b.lon}`;
+            if (!countryMap[key]) {
+                countryMap[key] = {
+                    books: [], lat: b.lat, lon: b.lon,
+                    countryCode: b.countryCode, country: b.country
+                };
+            }
+            countryMap[key].books.push(b);
         });
 
         const markers = [];
-        Object.values(booksByCountry).forEach(({ books: bks, lat, lon, countryCode }) => {
-            const pos = latLonToVec3(lat, lon);
-            const color = countryColor(countryCode);
+        const labelObjects = [];
 
-            // 发光点
-            const dotGeo = new THREE.SphereGeometry(0.06 + bks.length * 0.02, 8, 8);
-            const dotMat = new THREE.MeshBasicMaterial({ color });
+        Object.values(countryMap).forEach(({ books: bks, lat, lon, countryCode, country }) => {
+            const pos = latLonToVec3(lat, lon);
+            const color = getColor(countryCode);
+            const count = bks.length;
+
+            // —— 发光标记点 ——
+            const dotGeo = new THREE.SphereGeometry(0.05 + count * 0.025, 10, 10);
+            const dotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color) });
             const dot = new THREE.Mesh(dotGeo, dotMat);
             dot.position.copy(pos);
-            dot.userData = { books: bks };
+            dot.userData = { books: bks, color, country, countryCode };
             scene.add(dot);
             markers.push(dot);
 
-            // 光晕（halo）
-            const haloGeo = new THREE.SphereGeometry(0.15 + bks.length * 0.03, 8, 8);
-            const haloMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.2 });
-            const halo = new THREE.Mesh(haloGeo, haloMat);
-            halo.position.copy(pos);
-            scene.add(halo);
+            // —— 光晕环 ——
+            const ringGeo = new THREE.RingGeometry(0.12 + count * 0.03, 0.18 + count * 0.04, 16);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(color), transparent: true, opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.copy(pos);
+            ring.lookAt(new THREE.Vector3(0, 0, 0)); // 面朝球心
+            scene.add(ring);
 
-            // 竖线（spike）
-            const lineGeo = new THREE.BufferGeometry().setFromPoints([
-                latLonToVec3(lat, lon, RADIUS),
-                pos,
-            ]);
-            const lineMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 });
+            // —— 高度线（地表到标记点）——
+            const surfacePos = latLonToVec3(lat, lon, RADIUS);
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([surfacePos, pos]);
+            const lineMat = new THREE.LineBasicMaterial({
+                color: new THREE.Color(color), transparent: true, opacity: 0.5
+            });
             scene.add(new THREE.Line(lineGeo, lineMat));
+
+            // —— CSS2D 国家标签 ——
+            const div = document.createElement('div');
+            div.className = 'globe-label';
+            div.style.cssText = `
+                background: rgba(0,0,0,0.75);
+                border: 1px solid ${color};
+                border-radius: 6px;
+                padding: 3px 8px;
+                color: ${color};
+                font-size: 11px;
+                font-family: 'Inter', sans-serif;
+                font-weight: 600;
+                white-space: nowrap;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.3s;
+                text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+                user-select: none;
+            `;
+            div.innerHTML = `${country} <span style="opacity:0.6">${count}本</span>`;
+
+            const labelObj = new CSS2DObject(div);
+            labelObj.position.copy(latLonToVec3(lat, lon, RADIUS + 0.45));
+            labelObj.userData = { div, dotRef: dot };
+            scene.add(labelObj);
+            labelObjects.push(labelObj);
         });
 
-        // ── Raycaster（点击检测）──
+        // ── Raycaster（点击 & hover）──
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
+        let hoveredMarker = null;
+
+        const onMouseMove = (e) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(markers);
+
+            // 重置所有标签
+            labelObjects.forEach(l => { l.userData.div.style.opacity = '0'; });
+
+            if (hits.length > 0) {
+                const hit = hits[0].object;
+                if (hoveredMarker !== hit) {
+                    hoveredMarker = hit;
+                    controls.autoRotate = false;
+                }
+                // 找到对应标签
+                const idx = markers.indexOf(hit);
+                if (idx >= 0 && labelObjects[idx]) {
+                    labelObjects[idx].userData.div.style.opacity = '1';
+                }
+                renderer.domElement.style.cursor = 'pointer';
+            } else {
+                if (hoveredMarker) {
+                    hoveredMarker = null;
+                    setTimeout(() => { controls.autoRotate = true; }, 3000);
+                }
+                renderer.domElement.style.cursor = 'grab';
+            }
+        };
+
         const onClick = (e) => {
-            const rect = canvas.getBoundingClientRect();
+            const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
@@ -221,11 +269,11 @@ export default function GlobeScene({ books, onBookClick }) {
             if (hits.length > 0) {
                 const { books: hitBooks } = hits[0].object.userData;
                 onBookClick(hitBooks[0]);
-                controls.autoRotate = false;
-                setTimeout(() => { controls.autoRotate = true; }, 5000);
             }
         };
-        canvas.addEventListener('click', onClick);
+
+        renderer.domElement.addEventListener('mousemove', onMouseMove);
+        renderer.domElement.addEventListener('click', onClick);
 
         // ── 动画循环 ──
         let animId;
@@ -233,14 +281,14 @@ export default function GlobeScene({ books, onBookClick }) {
         const animate = () => {
             animId = requestAnimationFrame(animate);
             const t = clock.getElapsedTime();
-            globeMat.uniforms.time.value = t;
-            // 标记点脉冲
+            // 标记点脉冲缩放
             markers.forEach((m, i) => {
-                const s = 1 + Math.sin(t * 2 + i) * 0.15;
+                const s = 1 + Math.sin(t * 2.5 + i * 1.2) * 0.25;
                 m.scale.setScalar(s);
             });
             controls.update();
             renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
         };
         animate();
 
@@ -248,10 +296,11 @@ export default function GlobeScene({ books, onBookClick }) {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
         };
         window.addEventListener('resize', onResize);
 
-        sceneRef.current = { renderer, animId, onClick, onResize, controls };
+        sceneRef.current = { renderer, labelRenderer, animId, onResize, onMouseMove, onClick, container };
     }, [books, onBookClick]);
 
     useEffect(() => {
@@ -260,12 +309,24 @@ export default function GlobeScene({ books, onBookClick }) {
             const s = sceneRef.current;
             if (!s) return;
             cancelAnimationFrame(s.animId);
-            s.renderer.dispose();
+            s.renderer.domElement.removeEventListener('mousemove', s.onMouseMove);
+            s.renderer.domElement.removeEventListener('click', s.onClick);
             window.removeEventListener('resize', s.onResize);
-            canvasRef.current?.removeEventListener('click', s.onClick);
+            s.renderer.dispose();
+            // 清理 DOM
+            while (s.container.firstChild) s.container.removeChild(s.container.firstChild);
             sceneRef.current = null;
         };
     }, [init]);
 
-    return <canvas ref={canvasRef} className={styles.canvas} style={{ cursor: 'grab' }} />;
+    return (
+        <div
+            ref={mountRef}
+            style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                background: '#000008',
+            }}
+        />
+    );
 }
