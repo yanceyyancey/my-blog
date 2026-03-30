@@ -87,20 +87,23 @@ export default function LoginScene({ onLogin }) {
         setError('');
 
         try {
-            // 极端简化：直接回退到最原始的字符串拼接，避开所有 URL 对象的 pattern 校验
-            const fetchUrl = `/api/reading/lookup?code=${encodeURIComponent(code)}&t=${Date.now()}`;
-            
-            console.log('[debug] Fetching:', fetchUrl);
+            const fetchUrl = `/api/reading/lookup?code=${encodeURIComponent(code)}`;
             const res = await fetch(fetchUrl);
             
-            const data = await res.json();
+            // 安全解析：先取文本再 parse，避免 Safari 在收到非 JSON 响应时抛出 DOMException
+            const text = await res.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                throw new Error(`服务器响应异常: ${text.slice(0, 100)}`);
+            }
+            
             if (!res.ok) throw new Error(data.error || '请求失败');
             onLogin({ code, gistId: data.gistId, isNew: data.isNew });
         } catch (err) {
-            console.error('[frontend-login] Raw Error:', err);
-            // 终端诊断：显示 Name, Message 及其全貌
-            const debugMsg = `ERROR: ${err.name || 'Error'} \nMSG: ${err.message} \nCODE: ${err.code || 'N/A'}`;
-            setError(debugMsg);
+            console.error('[login error]', err.message);
+            setError(err.message);
             setLoading(false);
         }
     };

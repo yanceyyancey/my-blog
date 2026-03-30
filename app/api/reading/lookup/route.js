@@ -50,7 +50,8 @@ function gistFetch(path, options = {}) {
 // 查询代号 → Gist ID，不存在则创建
 // ==========================================
 export async function GET(request) {
-    const MASTER_GIST_ID = process.env.MASTER_GIST_ID;
+    const MASTER_GIST_ID = (process.env.MASTER_GIST_ID || '').replace(/[^a-zA-Z0-9]/g, '');
+    const GITHUB_PAT_CHECK = (process.env.GITHUB_PAT || '').replace(/[^\x21-\x7E]/g, '');
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code')?.toLowerCase().trim();
 
@@ -58,8 +59,8 @@ export async function GET(request) {
         return NextResponse.json({ error: '代号只能包含英文字母和数字' }, { status: 400 });
     }
 
-    if (!GITHUB_PAT || !MASTER_GIST_ID) {
-        return NextResponse.json({ error: '服务端配置缺失，请联系管理员' }, { status: 500 });
+    if (!GITHUB_PAT_CHECK || !MASTER_GIST_ID) {
+        return NextResponse.json({ error: '服务端配置缺失：PAT或GistID未设置' }, { status: 500 });
     }
 
     try {
