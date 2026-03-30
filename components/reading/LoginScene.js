@@ -102,11 +102,9 @@ export default function LoginScene({ onLogin }) {
             onLogin({ code, gistId: data.gistId, isNew: data.isNew });
         } catch (err) {
             console.error('[frontend-login] Error:', err);
-            // 额外捕获：如果报错依然是 Pattern 相关，换一种更直白的错误提示
-            const msg = err.message.includes('pattern') 
-                ? '浏览器网络校验异常，请尝试换一个浏览器访问' 
-                : err.message;
-            setError(msg);
+            // 终端诊断：显示详细堆栈
+            const debugMsg = `${err.message} \nStack: ${err.stack?.slice(0, 100)}...`;
+            setError(debugMsg);
             setLoading(false);
         }
     };
