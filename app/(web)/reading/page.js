@@ -9,10 +9,12 @@ import AddBookModal from '@/components/reading/AddBookModal';
 // 动态加载（防 SSR 报错）
 const LoginScene = dynamic(() => import('@/components/reading/LoginScene'), { ssr: false });
 const GalaxyScene = dynamic(() => import('@/components/reading/GalaxyScene'), { ssr: false });
+const GlobeScene = dynamic(() => import('@/components/reading/GlobeScene'), { ssr: false });
 
 export default function ReadingOdysseyPage() {
     // ---- 状态机 ----
     const [phase, setPhase] = useState('login'); // 'login' | 'loading' | 'galaxy'
+    const [viewMode, setViewMode] = useState('galaxy'); // 'galaxy' | 'globe'
     const [user, setUser] = useState(null); // { code, gistId, isNew }
     const [books, setBooks] = useState([]);
     const [selectedBook, setSelectedBook] = useState(null);
@@ -104,12 +106,11 @@ export default function ReadingOdysseyPage() {
             {/* === 粒子星图场景 === */}
             {phase === 'galaxy' && (
                 <>
-                    {/* 3D 书籍粒子墙 */}
+                    {/* 3D 场景：粒子墙 or 地球 */}
                     {books.length > 0 ? (
-                        <GalaxyScene
-                            books={books}
-                            onBookClick={handleBookClick}
-                        />
+                        viewMode === 'globe'
+                            ? <GlobeScene books={books} onBookClick={handleBookClick} />
+                            : <GalaxyScene books={books} onBookClick={handleBookClick} />
                     ) : (
                         <div className={styles.loadingOverlay} style={{ background: '#050508' }}>
                             <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.95rem', textAlign: 'center' }}>
@@ -125,7 +126,23 @@ export default function ReadingOdysseyPage() {
                     <div className={styles.sceneUI}>
                         <span className={styles.sceneTitle}>{user?.code}'s odyssey</span>
                         <div className={styles.sceneActions}>
-                            {/* 搜索框 */}
+                            {/* 视图切换 */}
+                            <div className={styles.viewToggle}>
+                                <button
+                                    className={`${styles.viewBtn} ${viewMode === 'galaxy' ? styles.viewBtnActive : ''}`}
+                                    onClick={() => setViewMode('galaxy')}
+                                    title="粒子书墙"
+                                >
+                                    ✦ 书墙
+                                </button>
+                                <button
+                                    className={`${styles.viewBtn} ${viewMode === 'globe' ? styles.viewBtnActive : ''}`}
+                                    onClick={() => setViewMode('globe')}
+                                    title="全球足迹"
+                                >
+                                    ◉ 地球
+                                </button>
+                            </div>
                             <div className={styles.searchBox}>
                                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
                                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
