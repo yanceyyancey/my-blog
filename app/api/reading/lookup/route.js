@@ -3,36 +3,42 @@ import { NextResponse } from 'next/server';
 // 绕过 Turbopack 的 fetch 拦截，直接使用原生 Node.js fetch
 // Next.js 会 patch 全局 fetch；我们通过手动传递完整 init 对象来强制带上 headers
 async function gistFetch(path, options = {}) {
-    const GITHUB_PAT = process.env.GITHUB_PAT?.trim();
-    const MASTER_GIST_ID = process.env.MASTER_GIST_ID?.trim();
-    
-    const url = path 
-        ? `https://api.github.com/gists/${path}`
-        : 'https://api.github.com/gists';
+    const GITHUB_PAT = (process.env.GITHUB_PAT || "").trim();
+    const url = path ? `https://api.github.com/gists/${path}` : 'https://api.github.com/gists';
+
+    if (!GITHUB_PAT) {
+        throw new Error('GITHUB_PAT is missing in environment variables.');
+    }
 
     const headers = {
         'Accept': 'application/vnd.github+json',
-        'User-Agent': 'ReadingOdyssey-App',
+        'Authorization': `Bearer ${GITHUB_PAT}`,
+        'User-Agent': 'Reading-Odyssey-App-v1',
     };
 
-    if (GITHUB_PAT) {
-        headers['Authorization'] = `Bearer ${GITHUB_PAT}`;
+    if (options.body) {
+        headers['Content-Type'] = 'application/json';
     }
 
-    const init = {
-        method: options.method || 'GET',
-        headers,
-        cache: 'no-store',
-        ...(options.body ? { body: options.body } : {}),
-    };
+    try {
+        const res = await fetch(url, {
+            method: options.method || 'GET',
+            headers,
+            body: options.body || undefined,
+            cache: 'no-store'
+        });
 
-    const res = await fetch(url, init);
-    
-    if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`GitHub API error ${res.status}: ${err}`);
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`GitHub API HTTP ${res.status}: ${errorText}`);
+        }
+
+        return await res.json();
+    } catch (e) {
+        // 捕获并重定向 fetch 原生报错
+        console.error('[gistFetch] Request failed for URL:', url, 'Error:', e.message);
+        throw new Error(`Fetch Error: ${e.message}`);
     }
-    return res.json();
 }
 
 // ==========================================

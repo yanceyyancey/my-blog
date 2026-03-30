@@ -1,26 +1,33 @@
 import { NextResponse } from 'next/server';
 
 async function gistFetch(gistId, options = {}) {
-    const GITHUB_PAT = process.env.GITHUB_PAT?.trim();
+    const GITHUB_PAT = (process.env.GITHUB_PAT || "").trim();
+    if (!GITHUB_PAT) throw new Error('GITHUB_PAT 缺失');
+
     const url = `https://api.github.com/gists/${gistId}`;
     const headers = {
         'Accept': 'application/vnd.github+json',
-        'User-Agent': 'ReadingOdyssey-App',
+        'Authorization': `Bearer ${GITHUB_PAT}`,
+        'User-Agent': 'Reading-Odyssey-App-v1',
     };
 
-    if (GITHUB_PAT) {
-        headers['Authorization'] = `Bearer ${GITHUB_PAT}`;
+    if (options.body) {
+        headers['Content-Type'] = 'application/json';
     }
 
-    const init = {
+    const res = await fetch(url, {
         method: options.method || 'GET',
         headers,
-        cache: 'no-store',
-        ...(options.body ? { body: options.body } : {}),
-    };
-    const res = await fetch(url, init);
-    if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
-    return res.json();
+        body: options.body || undefined,
+        cache: 'no-store'
+    });
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`GitHub API HTTP ${res.status}: ${errorText}`);
+    }
+
+    return await res.json();
 }
 
 // ==========================================
