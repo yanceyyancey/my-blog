@@ -87,12 +87,26 @@ export default function LoginScene({ onLogin }) {
         setError('');
 
         try {
-            const res = await fetch(`/api/reading/lookup?code=${code}`);
+            // 使用 window.location.origin 构造完整路径，防止某些浏览器对局部路径的 fetch 校验失败
+            const url = new URL('/api/reading/lookup', window.location.origin);
+            url.searchParams.set('code', code);
+
+            const res = await fetch(url.toString(), {
+                method: 'GET',
+                credentials: 'omit', // 显式声明不携带凭证，减少报错概率
+                headers: { 'Accept': 'application/json' }
+            });
+            
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || '请求失败');
             onLogin({ code, gistId: data.gistId, isNew: data.isNew });
         } catch (err) {
-            setError(err.message);
+            console.error('[frontend-login] Error:', err);
+            // 额外捕获：如果报错依然是 Pattern 相关，换一种更直白的错误提示
+            const msg = err.message.includes('pattern') 
+                ? '浏览器网络校验异常，请尝试换一个浏览器访问' 
+                : err.message;
+            setError(msg);
             setLoading(false);
         }
     };

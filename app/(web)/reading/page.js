@@ -25,7 +25,14 @@ export default function ReadingOdysseyPage() {
         setPhase('loading');
 
         try {
-            const res = await fetch(`/api/reading/gist?id=${userData.gistId}`);
+            const url = new URL('/api/reading/gist', window.location.origin);
+            url.searchParams.set('id', userData.gistId);
+
+            const res = await fetch(url.toString(), {
+                method: 'GET',
+                credentials: 'omit',
+                cache: 'no-store'
+            });
             const data = await res.json();
             setBooks(data.books || []);
 
