@@ -261,42 +261,53 @@ export default function GlobeScene({ books, onBookClick }) {
             }
         };
 
-        // ── 相机飞行到标记点 ──
+        // ── 相机飞行到标记点（纯 Three.js 球面插值，绕开 OrbitControls 干扰）──
         const flyToMarker = (markerMesh, callback) => {
             controls.autoRotate = false;
             controls.enabled = false;
 
-            // 目标：从标记点方向偏移一段距离作为相机位置
-            const targetPos = markerMesh.position.clone().normalize().multiplyScalar(11);
-            const lookAtVec = new THREE.Vector3(0, 0, 0);
+            const startPos = camera.position.clone();
+            // 目标位置：标记点方向，距球心 11 单位
+            const endPos = markerMesh.position.clone().normalize().multiplyScalar(11);
+            const lookAt = new THREE.Vector3(0, 0, 0);
 
-            // 动画相机位置
-            gsap.to(camera.position, {
-                x: targetPos.x,
-                y: targetPos.y,
-                z: targetPos.z,
-                duration: 1.6,
-                ease: 'power3.inOut',
-                onUpdate: () => {
-                    camera.lookAt(lookAtVec);
-                    controls.target.copy(lookAtVec);
-                },
-                onComplete: () => {
-                    controls.enabled = true;
-                    // 动画结束后触发回调（弹出 HUD）
-                    if (callback) callback();
-                    // 5s 后恢复自转
-                    setTimeout(() => {
-                        controls.autoRotate = true;
-                    }, 5000);
+            const FRAMES = 90; // ~1.5s at 60fps
+            let frame = 0;
+
+            // easeInOutCubic
+            const ease = (t) => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+
+            // 地球微微抖动效果（用 rotation 做）
+            let shakeFrame = 0;
+            const shake = () => {
+                if (shakeFrame < 20) {
+                    globe.rotation.y += Math.sin(shakeFrame * 1.5) * 0.003;
+                    shakeFrame++;
+                    requestAnimationFrame(shake);
                 }
-            });
+            };
+            shake();
 
-            // 同步让地球微微抖动（震感反馈）
-            gsap.fromTo(globe.rotation,
-                { y: globe.rotation.y },
-                { y: globe.rotation.y + 0.05, duration: 0.15, yoyo: true, repeat: 3, ease: 'sine.inOut' }
-            );
+            const flyStep = () => {
+                if (frame >= FRAMES) {
+                    // 到达目标
+                    camera.position.copy(endPos);
+                    camera.lookAt(lookAt);
+                    controls.target.copy(lookAt);
+                    controls.enabled = true;
+                    if (callback) callback();
+                    setTimeout(() => { controls.autoRotate = true; }, 5000);
+                    return;
+                }
+                const t = ease(frame / FRAMES);
+                // 球面线性插值（SLERP）保持距球心距离
+                camera.position.lerpVectors(startPos, endPos, t);
+                camera.lookAt(lookAt);
+                controls.target.copy(lookAt);
+                frame++;
+                requestAnimationFrame(flyStep);
+            };
+            flyStep();
         };
 
         const onClick = (e) => {
