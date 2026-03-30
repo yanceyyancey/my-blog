@@ -5,7 +5,11 @@ import https from 'node:https';
 function gistFetch(path, options = {}) {
     return new Promise((resolve, reject) => {
         const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
-        const url = path ? `/gists/${path}` : '/gists';
+        
+        // 核心修复：对 path 执行极度严格的清洗，只保留字母和数字
+        // 这样即使 Vercel 里多填了下划线或空格，这里也会自动修正成正确的 ID
+        const cleanPath = path ? path.replace(/[^a-zA-Z0-9]/g, "") : "";
+        const url = cleanPath ? `/gists/${cleanPath}` : '/gists';
         
         const reqOptions = {
             hostname: 'api.github.com',

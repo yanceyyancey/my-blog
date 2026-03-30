@@ -4,7 +4,10 @@ import https from 'node:https';
 function gistFetch(gistId, options = {}) {
     return new Promise((resolve, reject) => {
         const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
-        const url = `/gists/${gistId}`;
+        
+        // 核心修复：清理 gistId 避免携带任何非法字符（如下划线或换行）
+        const cleanGistId = gistId ? gistId.replace(/[^a-zA-Z0-9]/g, "") : "";
+        const url = `/gists/${cleanGistId}`;
         
         const reqOptions = {
             hostname: 'api.github.com',
