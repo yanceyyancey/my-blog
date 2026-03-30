@@ -87,23 +87,19 @@ export default function LoginScene({ onLogin }) {
         setError('');
 
         try {
-            // 使用 window.location.origin 构造完整路径，防止某些浏览器对局部路径的 fetch 校验失败
-            const url = new URL('/api/reading/lookup', window.location.origin);
-            url.searchParams.set('code', code);
-
-            const res = await fetch(url.toString(), {
-                method: 'GET',
-                credentials: 'omit', // 显式声明不携带凭证，减少报错概率
-                headers: { 'Accept': 'application/json' }
-            });
+            // 极端简化：直接回退到最原始的字符串拼接，避开所有 URL 对象的 pattern 校验
+            const fetchUrl = `/api/reading/lookup?code=${encodeURIComponent(code)}&t=${Date.now()}`;
+            
+            console.log('[debug] Fetching:', fetchUrl);
+            const res = await fetch(fetchUrl);
             
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || '请求失败');
             onLogin({ code, gistId: data.gistId, isNew: data.isNew });
         } catch (err) {
-            console.error('[frontend-login] Error:', err);
-            // 终端诊断：显示详细堆栈
-            const debugMsg = `${err.message} \nStack: ${err.stack?.slice(0, 100)}...`;
+            console.error('[frontend-login] Raw Error:', err);
+            // 终端诊断：显示 Name, Message 及其全貌
+            const debugMsg = `ERROR: ${err.name || 'Error'} \nMSG: ${err.message} \nCODE: ${err.code || 'N/A'}`;
             setError(debugMsg);
             setLoading(false);
         }
