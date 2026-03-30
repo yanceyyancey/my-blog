@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { gsap } from 'gsap';
 import styles from './reading.module.css';
 
 const RADIUS = 5;
@@ -260,6 +261,44 @@ export default function GlobeScene({ books, onBookClick }) {
             }
         };
 
+        // ── 相机飞行到标记点 ──
+        const flyToMarker = (markerMesh, callback) => {
+            controls.autoRotate = false;
+            controls.enabled = false;
+
+            // 目标：从标记点方向偏移一段距离作为相机位置
+            const targetPos = markerMesh.position.clone().normalize().multiplyScalar(11);
+            const lookAtVec = new THREE.Vector3(0, 0, 0);
+
+            // 动画相机位置
+            gsap.to(camera.position, {
+                x: targetPos.x,
+                y: targetPos.y,
+                z: targetPos.z,
+                duration: 1.6,
+                ease: 'power3.inOut',
+                onUpdate: () => {
+                    camera.lookAt(lookAtVec);
+                    controls.target.copy(lookAtVec);
+                },
+                onComplete: () => {
+                    controls.enabled = true;
+                    // 动画结束后触发回调（弹出 HUD）
+                    if (callback) callback();
+                    // 5s 后恢复自转
+                    setTimeout(() => {
+                        controls.autoRotate = true;
+                    }, 5000);
+                }
+            });
+
+            // 同步让地球微微抖动（震感反馈）
+            gsap.fromTo(globe.rotation,
+                { y: globe.rotation.y },
+                { y: globe.rotation.y + 0.05, duration: 0.15, yoyo: true, repeat: 3, ease: 'sine.inOut' }
+            );
+        };
+
         const onClick = (e) => {
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -267,8 +306,10 @@ export default function GlobeScene({ books, onBookClick }) {
             raycaster.setFromCamera(mouse, camera);
             const hits = raycaster.intersectObjects(markers);
             if (hits.length > 0) {
-                const { books: hitBooks } = hits[0].object.userData;
-                onBookClick(hitBooks[0]);
+                const hitMarker = hits[0].object;
+                const { books: hitBooks } = hitMarker.userData;
+                // 先飞过去，再弹 HUD
+                flyToMarker(hitMarker, () => onBookClick(hitBooks[0]));
             }
         };
 
