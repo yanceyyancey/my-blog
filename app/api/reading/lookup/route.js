@@ -3,17 +3,18 @@ import { NextResponse } from 'next/server';
 // 绕过 Turbopack 的 fetch 拦截，直接使用原生 Node.js fetch
 // Next.js 会 patch 全局 fetch；我们通过手动传递完整 init 对象来强制带上 headers
 async function gistFetch(path, options = {}) {
-    const GITHUB_PAT = (process.env.GITHUB_PAT || "").trim();
+    // 终极清洗：只允许标准的 ASCII 可打印字符，彻底干掉任何隐形的换行或非法字符
+    const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
     const url = path ? `https://api.github.com/gists/${path}` : 'https://api.github.com/gists';
 
-    if (!GITHUB_PAT) {
-        throw new Error('GITHUB_PAT is missing in environment variables.');
+    if (!GITHUB_PAT || GITHUB_PAT.length < 10) {
+        throw new Error('GITHUB_PAT 格式不正确或未配置');
     }
 
     const headers = {
         'Accept': 'application/vnd.github+json',
         'Authorization': `Bearer ${GITHUB_PAT}`,
-        'User-Agent': 'Reading-Odyssey-App-v1',
+        'User-Agent': 'Reading-Odyssey-App', // 简化，不带 v1 之类的特殊符号
     };
 
     if (options.body) {
@@ -23,7 +24,7 @@ async function gistFetch(path, options = {}) {
     try {
         const res = await fetch(url, {
             method: options.method || 'GET',
-            headers,
+            headers: headers,
             body: options.body || undefined,
             cache: 'no-store'
         });
@@ -35,9 +36,8 @@ async function gistFetch(path, options = {}) {
 
         return await res.json();
     } catch (e) {
-        // 捕获并重定向 fetch 原生报错
-        console.error('[gistFetch] Request failed for URL:', url, 'Error:', e.message);
-        throw new Error(`Fetch Error: ${e.message}`);
+        console.error('[gistFetch] Fatal Error:', e.message);
+        throw e;
     }
 }
 

@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 
 async function gistFetch(gistId, options = {}) {
-    const GITHUB_PAT = (process.env.GITHUB_PAT || "").trim();
-    if (!GITHUB_PAT) throw new Error('GITHUB_PAT 缺失');
+    const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
+    if (!GITHUB_PAT || GITHUB_PAT.length < 10) throw new Error('GITHUB_PAT 缺失');
 
     const url = `https://api.github.com/gists/${gistId}`;
     const headers = {
         'Accept': 'application/vnd.github+json',
         'Authorization': `Bearer ${GITHUB_PAT}`,
-        'User-Agent': 'Reading-Odyssey-App-v1',
+        'User-Agent': 'Reading-Odyssey-App',
     };
 
     if (options.body) {
@@ -17,7 +17,7 @@ async function gistFetch(gistId, options = {}) {
 
     const res = await fetch(url, {
         method: options.method || 'GET',
-        headers,
+        headers: headers,
         body: options.body || undefined,
         cache: 'no-store'
     });
