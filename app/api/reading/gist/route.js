@@ -1,33 +1,43 @@
 import { NextResponse } from 'next/server';
+import https from 'node:https';
 
-async function gistFetch(gistId, options = {}) {
-    const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
-    if (!GITHUB_PAT || GITHUB_PAT.length < 10) throw new Error('GITHUB_PAT 缺失');
+function gistFetch(gistId, options = {}) {
+    return new Promise((resolve, reject) => {
+        const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
+        const url = `/gists/${gistId}`;
+        
+        const reqOptions = {
+            hostname: 'api.github.com',
+            path: url,
+            method: options.method || 'GET',
+            headers: {
+                'Authorization': `Bearer ${GITHUB_PAT}`,
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'Reading-Odyssey-App-Standard'
+            }
+        };
 
-    const url = `https://api.github.com/gists/${gistId}`;
-    const headers = {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': `Bearer ${GITHUB_PAT}`,
-        'User-Agent': 'Reading-Odyssey-App',
-    };
+        if (options.body) {
+            reqOptions.headers['Content-Type'] = 'application/json';
+            reqOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
+        }
 
-    if (options.body) {
-        headers['Content-Type'] = 'application/json';
-    }
+        const req = https.request(reqOptions, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('JSON 失败')); }
+                } else {
+                    reject(new Error(`GitHub HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
 
-    const res = await fetch(url, {
-        method: options.method || 'GET',
-        headers: headers,
-        body: options.body || undefined,
-        cache: 'no-store'
+        req.on('error', (e) => reject(e));
+        if (options.body) req.write(options.body);
+        req.end();
     });
-
-    if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`GitHub API HTTP ${res.status}: ${errorText}`);
-    }
-
-    return await res.json();
 }
 
 // ==========================================

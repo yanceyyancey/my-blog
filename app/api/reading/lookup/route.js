@@ -1,44 +1,44 @@
 import { NextResponse } from 'next/server';
+import https from 'node:https';
 
-// 绕过 Turbopack 的 fetch 拦截，直接使用原生 Node.js fetch
-// Next.js 会 patch 全局 fetch；我们通过手动传递完整 init 对象来强制带上 headers
-async function gistFetch(path, options = {}) {
-    // 终极清洗：只允许标准的 ASCII 可打印字符，彻底干掉任何隐形的换行或非法字符
-    const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
-    const url = path ? `https://api.github.com/gists/${path}` : 'https://api.github.com/gists';
-
-    if (!GITHUB_PAT || GITHUB_PAT.length < 10) {
-        throw new Error('GITHUB_PAT 格式不正确或未配置');
-    }
-
-    const headers = {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': `Bearer ${GITHUB_PAT}`,
-        'User-Agent': 'Reading-Odyssey-App', // 简化，不带 v1 之类的特殊符号
-    };
-
-    if (options.body) {
-        headers['Content-Type'] = 'application/json';
-    }
-
-    try {
-        const res = await fetch(url, {
+// --- 用最底层的 https 模块重写，彻底避开 fetch 的校验报错 ---
+function gistFetch(path, options = {}) {
+    return new Promise((resolve, reject) => {
+        const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
+        const url = path ? `/gists/${path}` : '/gists';
+        
+        const reqOptions = {
+            hostname: 'api.github.com',
+            path: url,
             method: options.method || 'GET',
-            headers: headers,
-            body: options.body || undefined,
-            cache: 'no-store'
-        });
+            headers: {
+                'Authorization': `Bearer ${GITHUB_PAT}`,
+                'Accept': 'application/vnd.github+json',
+                'User-Agent': 'Reading-Odyssey-App-Standard'
+            }
+        };
 
-        if (!res.ok) {
-            const errorText = await res.text();
-            throw new Error(`GitHub API HTTP ${res.status}: ${errorText}`);
+        if (options.body) {
+            reqOptions.headers['Content-Type'] = 'application/json';
+            reqOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
         }
 
-        return await res.json();
-    } catch (e) {
-        console.error('[gistFetch] Fatal Error:', e.message);
-        throw e;
-    }
+        const req = https.request(reqOptions, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('JSON 解析失败')); }
+                } else {
+                    reject(new Error(`GitHub HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+
+        req.on('error', (e) => reject(e));
+        if (options.body) req.write(options.body);
+        req.end();
+    });
 }
 
 // ==========================================
