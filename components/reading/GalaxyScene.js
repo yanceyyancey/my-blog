@@ -151,16 +151,20 @@ export default function GalaxyScene({ books, onBookClick, onAddBook }) {
             const points = new THREE.Points(geo, mat);
             scene.add(points);
 
-            // 呼吸动画（随机微浮动）
+            // 呼吸动画（随机微浮动，加大幅度让效果更明显）
             let t = 0;
             const breathe = () => {
-                t += 0.008;
+                t += 0.012;
                 const pos = geo.attributes.position.array;
                 for (let i = 0; i < books.length; i++) {
                     const start = bookStartIndices.current[i];
                     for (let j = 0; j < PARTICLE_COUNT; j++) {
                         const idx = (start + j) * 3;
-                        pos[idx + 2] = allOrig[idx + 2] + Math.sin(t + j * 0.1 + i * 2) * 0.04;
+                        // z 轴波动（书本整体漂动）
+                        pos[idx + 2] = allOrig[idx + 2] + Math.sin(t * 0.8 + i * 1.5) * 0.4;
+                        // 微小 xy 扰动（每个粒子独立波动）
+                        pos[idx]     = allOrig[idx]     + Math.sin(t * 1.1 + j * 0.07) * 0.06;
+                        pos[idx + 1] = allOrig[idx + 1] + Math.cos(t * 0.9 + j * 0.05) * 0.06;
                     }
                 }
                 geo.attributes.position.needsUpdate = true;

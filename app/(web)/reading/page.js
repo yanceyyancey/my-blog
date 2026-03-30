@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import styles from '@/components/reading/reading.module.css';
 import BookHUD from '@/components/reading/BookHUD';
@@ -12,6 +12,24 @@ const GalaxyScene = dynamic(() => import('@/components/reading/GalaxyScene'), { 
 const GlobeScene = dynamic(() => import('@/components/reading/GlobeScene'), { ssr: false });
 
 export default function ReadingOdysseyPage() {
+    // ---- 隐藏博客全局导航（沉浸模式）----
+    useEffect(() => {
+        document.body.classList.add('reading-odyssey-mode');
+        const style = document.createElement('style');
+        style.id = 'reading-nav-hide';
+        style.textContent = `
+            body.reading-odyssey-mode nav,
+            body.reading-odyssey-mode header {
+                display: none !important;
+            }
+        `;
+        document.head.appendChild(style);
+        return () => {
+            document.body.classList.remove('reading-odyssey-mode');
+            document.getElementById('reading-nav-hide')?.remove();
+        };
+    }, []);
+
     // ---- 状态机 ----
     const [phase, setPhase] = useState('login'); // 'login' | 'loading' | 'galaxy'
     const [viewMode, setViewMode] = useState('galaxy'); // 'galaxy' | 'globe'
