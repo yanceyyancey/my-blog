@@ -1,17 +1,20 @@
 import { NextResponse } from 'next/server';
 
 async function gistFetch(gistId, options = {}) {
-    const GITHUB_PAT = process.env.GITHUB_PAT;
+    const GITHUB_PAT = process.env.GITHUB_PAT?.trim();
     const url = `https://api.github.com/gists/${gistId}`;
+    const headers = {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'ReadingOdyssey-App',
+    };
+
+    if (GITHUB_PAT) {
+        headers['Authorization'] = `Bearer ${GITHUB_PAT}`;
+    }
+
     const init = {
         method: options.method || 'GET',
-        headers: {
-            'Authorization': `token ${GITHUB_PAT}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'ReadingOdyssey/1.0',
-            'X-GitHub-Api-Version': '2022-11-28',
-            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        },
+        headers,
         cache: 'no-store',
         ...(options.body ? { body: options.body } : {}),
     };

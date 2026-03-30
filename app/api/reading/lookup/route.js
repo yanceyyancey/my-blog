@@ -3,22 +3,25 @@ import { NextResponse } from 'next/server';
 // 绕过 Turbopack 的 fetch 拦截，直接使用原生 Node.js fetch
 // Next.js 会 patch 全局 fetch；我们通过手动传递完整 init 对象来强制带上 headers
 async function gistFetch(path, options = {}) {
-    const GITHUB_PAT = process.env.GITHUB_PAT;
-    const MASTER_GIST_ID = process.env.MASTER_GIST_ID;
+    const GITHUB_PAT = process.env.GITHUB_PAT?.trim();
+    const MASTER_GIST_ID = process.env.MASTER_GIST_ID?.trim();
     
     const url = path 
         ? `https://api.github.com/gists/${path}`
         : 'https://api.github.com/gists';
 
+    const headers = {
+        'Accept': 'application/vnd.github+json',
+        'User-Agent': 'ReadingOdyssey-App',
+    };
+
+    if (GITHUB_PAT) {
+        headers['Authorization'] = `Bearer ${GITHUB_PAT}`;
+    }
+
     const init = {
         method: options.method || 'GET',
-        headers: {
-            'Authorization': `token ${GITHUB_PAT}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'ReadingOdyssey/1.0',
-            'X-GitHub-Api-Version': '2022-11-28',
-            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        },
+        headers,
         cache: 'no-store',
         ...(options.body ? { body: options.body } : {}),
     };
