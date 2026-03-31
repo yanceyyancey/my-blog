@@ -56,23 +56,49 @@ function makeCoverTexture(books, colorHex) {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = colorHex;
     ctx.fillRect(0, 0, W, H);
-    const book = books.find(b => b.coverUrl);
-    if (!book) return Promise.resolve(new THREE.CanvasTexture(canvas));
+
+    const validBooks = books.filter(b => b.coverUrl).slice(0, 9);
+    if (!validBooks.length) return Promise.resolve(new THREE.CanvasTexture(canvas));
+
     return new Promise(resolve => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-            const target = 3/4, src = img.naturalWidth / img.naturalHeight;
-            let sw, sh, sx=0, sy=0;
-            if(src > target) { sh = img.naturalHeight; sw = sh*target; sx=(img.naturalWidth-sw)/2; }
-            else { sw = img.naturalWidth; sh=sw/target; sy=(img.naturalHeight-sh)/2; }
-            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+        const count = validBooks.length;
+        const grid = count === 1 ? 1 : count <= 4 ? 2 : 3;
+        const cellSizeW = W / grid;
+        const cellSizeH = H / grid;
+
+        Promise.all(validBooks.map(b => {
+            return new Promise(imgResolve => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => imgResolve(img);
+                img.onerror = () => imgResolve(null);
+                img.src = proxyCoverUrl(b.coverUrl);
+            });
+        })).then(images => {
+            images.forEach((img, i) => {
+                if (!img) return;
+                const row = Math.floor(i / grid);
+                const col = i % grid;
+                const x = col * cellSizeW;
+                const y = row * cellSizeH;
+
+                // 绘制带有一点点边距的封面
+                const pad = cellSizeW * 0.05;
+                const dw = cellSizeW - pad * 2, dh = cellSizeH - pad * 2;
+                const targetRatio = dw / dh, srcRatio = img.naturalWidth / img.naturalHeight;
+                
+                let sw, sh, sx = 0, sy = 0;
+                if (srcRatio > targetRatio) {
+                    sh = img.naturalHeight; sw = sh * targetRatio; sx = (img.naturalWidth - sw) / 2;
+                } else {
+                    sw = img.naturalWidth; sh = sw / targetRatio; sy = (img.naturalHeight - sh) / 2;
+                }
+                ctx.drawImage(img, sx, sy, sw, sh, x + pad, y + pad, dw, dh);
+            });
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
             resolve(tex);
-        };
-        img.onerror = () => resolve(new THREE.CanvasTexture(canvas));
-        img.src = proxyCoverUrl(book.coverUrl);
+        });
     });
 }
 
