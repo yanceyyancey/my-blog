@@ -317,11 +317,14 @@ const countryColorHex = countryColor;
 
 // ═══════════════════════════════════════════════════════════════════
 // 主组件
-// ═══════════════════════════════════════════════════════════════════
 export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
     const mountRef = useRef(null);
     const stateRef = useRef(null);
+    const booksRef = useRef(books);
     const [sceneReady, setSceneReady] = useState(false);
+
+    // 同步书籍引用，避免 re-init 导致的视角重置
+    useEffect(() => { booksRef.current = books; }, [books]);
 
     const init = useCallback(() => {
         const container = mountRef.current;
@@ -500,11 +503,11 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
         /* ── 飞行动画（球面 Slerp，完全沿球面弧线，不穿地心）── */
         const flyTo = (lat, lon, onDone) => {
             isFlying = true;
-            controls.autoRotate = false;
+            controls.autoRotate = false; // 彻底锁定：一旦触发点击/引导，停止旋转
             controls.enabled    = false;
 
             const startPos    = camera.position.clone();
-            const endPos      = geo2xyz(lat, lon, 11);
+            const endPos      = geo2xyz(lat, lon, 8.5); // 更深度的放大感 (Radius 8.5)
             const startR      = startPos.length();
             const endR        = endPos.length();
 
@@ -627,7 +630,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
 
         stateRef.current = { renderer, animId, onResize, onMouseMove, onClick, container, cityLabels, interactableMeshes, activate };
         setSceneReady(true);
-    }, [books, onBookClick]);
+    }, [onBookClick]); // 移除 books 依赖，防止视角因数据更新而重置
 
     useEffect(() => {
         if (sceneReady && autoFlyTarget && stateRef.current) {
