@@ -317,10 +317,11 @@ const countryColorHex = countryColor;
 
 // ═══════════════════════════════════════════════════════════════════
 // 主组件
-export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
+export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocused }) {
     const mountRef = useRef(null);
     const stateRef = useRef(null);
     const booksRef = useRef(books);
+    const prevFocusedRef = useRef(isFocused);
     const [sceneReady, setSceneReady] = useState(false);
 
     // 同步书籍引用，避免 re-init 导致的视角重置
@@ -524,8 +525,10 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
                 if (f >= FRAMES) {
                     isFlying = false;
                     controls.enabled = true;
+                    // 确保聚焦时彻底停摆
+                    controls.autoRotate = false;
+                    controls.autoRotateSpeed = 0;
                     onDone?.();
-                    // 用户正在阅读，不再强制恢复自动旋转，保持视角稳定
                     return;
                 }
                 const t  = ease3(f / FRAMES);
@@ -631,6 +634,34 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
         stateRef.current = { renderer, animId, onResize, onMouseMove, onClick, container, cityLabels, interactableMeshes, activate };
         setSceneReady(true);
     }, [onBookClick]); // 移除 books 依赖，防止视角因数据更新而重置
+
+    // ---- 监听焦点变化，实现“取消后缓慢恢复旋转” ----
+    useEffect(() => {
+        const s = stateRef.current;
+        if (!s || !sceneReady) return;
+
+        if (!isFocused && prevFocusedRef.current) {
+            // 1. 用户手动取消标记 (Close HUD) -> 缓慢拉远视角并恢复优雅自转
+            s.controls.autoRotate = true;
+            gsap.to(s.controls, { autoRotateSpeed: 0.25, duration: 2.0, ease: 'power2.inOut' });
+            
+            // 可选：稍微拉远一点距离，回复概览感
+            const currentPos = s.camera.position.clone();
+            const targetPos  = currentPos.clone().normalize().multiplyScalar(16.2);
+            gsap.to(s.camera.position, {
+                x: targetPos.x, y: targetPos.y, z: targetPos.z,
+                duration: 1.5, ease: 'power2.inOut', overwrite: 'auto'
+            });
+        }
+        
+        if (isFocused) {
+            // 2. 任何形式的聚焦都会锁定视角
+            s.controls.autoRotate = false;
+            s.controls.autoRotateSpeed = 0;
+        }
+
+        prevFocusedRef.current = isFocused;
+    }, [isFocused, sceneReady]);
 
     useEffect(() => {
         if (sceneReady && autoFlyTarget && stateRef.current) {

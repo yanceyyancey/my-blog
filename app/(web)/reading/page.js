@@ -140,6 +140,7 @@ export default function ReadingOdysseyPage() {
                                     books={books} 
                                     onBookClick={(b) => setSelectedBook(b)} 
                                     autoFlyTarget={autoFlyTarget} 
+                                    isFocused={!!selectedBook}
                                 />
                             ) : (
                                 <GalaxyScene 
