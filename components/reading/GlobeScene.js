@@ -342,12 +342,15 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
 
         /* ── Apple Maps 卫星地球 ── */
         const globeGeo = new THREE.SphereGeometry(R, 72, 72);
-        const globeMat = new THREE.MeshStandardMaterial({
-            color:     0x8899aa,   // 恢复为可见底图颜色的冷调蓝灰，以便看清地形又兼顾极简波普对比
-            roughness: 0.8,
-            metalness: 0.2,
+        const globeMat = new THREE.MeshPhongMaterial({
+            color: 0x000000,
+            transparent: true,
+            opacity: 0, // 初始不可见，等待书籍汇聚后逐渐浮现
+            shininess: 15,
+            specular: 0x222222,
         });
-        scene.add(new THREE.Mesh(globeGeo, globeMat));
+        const globeMesh = new THREE.Mesh(globeGeo, globeMat);
+        scene.add(globeMesh);
 
         const loader = new THREE.TextureLoader();
         loader.load(
@@ -362,15 +365,24 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
         );
 
         /* ── 大气层光晕 ── */
-        scene.add(new THREE.Mesh(
+        const atmosphereMat = new THREE.ShaderMaterial({
+            uniforms: { 
+                c: { value: new THREE.Color(0x222222) },
+                uOpacity: { value: 0.0 } // 初始不可见
+            }, 
+            vertexShader: `varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+            fragmentShader: `uniform vec3 c; uniform float uOpacity; varying vec3 vN;void main(){float i=pow(0.68-dot(vN,vec3(0,0,1)),5.);gl_FragColor=vec4(c,i*uOpacity);}`,
+            side: THREE.FrontSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+        });
+        const atmosphereMesh = new THREE.Mesh(
             new THREE.SphereGeometry(R * 1.022, 32, 32),
-            new THREE.ShaderMaterial({
-                uniforms: { c: { value: new THREE.Color(0x222222) } }, // 极简科技黑边
-                vertexShader: `varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-                fragmentShader: `uniform vec3 c;varying vec3 vN;void main(){float i=pow(0.68-dot(vN,vec3(0,0,1)),5.);gl_FragColor=vec4(c,i*0.55);}`,
-                side: THREE.FrontSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
-            })
-        ));
+            atmosphereMat
+        );
+        scene.add(atmosphereMesh);
+
+        // 核心震撼逻辑：书壳成型后，地球背景与星空在 2 秒内优雅浮现
+        gsap.to(globeMat, { opacity: 1, duration: 2.2, delay: 0.2, ease: 'power2.out' });
+        gsap.to(atmosphereMat.uniforms.uOpacity, { value: 0.55, duration: 2.5, delay: 0.5, ease: 'power2.out' });
 
         /* ── 星空 ── */
         const sa = new Float32Array(6000 * 3);
