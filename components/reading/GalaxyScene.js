@@ -165,10 +165,13 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 const cx = (col - (cols - 1) / 2) * SPACING_X;
                 const cy = -(row - (rows - 1) / 2) * SPACING_Y;
 
-                // 计算该本书籍贴在地球表面的基准位置（斐波那契球面算法使其均匀包裹在全球）
-                const bookP = (i + 0.5) / books.length;
-                const basePhi = Math.acos(1 - 2 * bookP); // 0 到 PI
-                const baseTheta = Math.PI * (1 + Math.sqrt(5)) * i; // Golden angle
+                // 计算该本书籍贴在地球表面的真实基准位置（读取数据的经纬度，精准贴附地图原位）
+                const lat = book.lat !== undefined && book.lat !== null ? book.lat : (Math.random() * 180 - 90);
+                const lon = book.lon !== undefined && book.lon !== null ? book.lon : (Math.random() * 360 - 180);
+                
+                // 转换经纬度为弧度 (注意与 GlobeScene.js 中的 geo2xyz 公式严格保持坐标轴与旋转系绝对一致)
+                const basePhi = (90 - lat) * Math.PI / 180;
+                const baseTheta = (lon + 180) * Math.PI / 180;
                 const globeR = 5.02; // 完全紧贴着未来产生的地球表面 (R=5)
 
                 // 生成初始散落的随机中心点：增加视场外生成的氛围感
@@ -205,14 +208,16 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                     allPositions[startIdx + j + 2] = allStart[startIdx + j + 2];
 
                     // 离场飞向地球边缘的终点映射 (完美球面贴纸算法：使得粒子阵列随经纬度自然弯曲，并紧贴地表)
+                    // 为了防止在极地产生的形变过度拉长，可以在此处用余弦缩放水平拉伸（这里直接采用投影使得高纬度有自然的映射拉拽感）
                     const d_theta = px / globeR;
                     const d_phi = py / globeR;
                     
                     const pPhi = basePhi - d_phi;
-                    const pTheta = baseTheta + d_theta;
+                    const pTheta = baseTheta - d_theta;
 
-                    const rFinal = globeR + pz; // 若 pz = 0 则完全平铺，若带浮动则呈现高低差
-                    allGlobe[startIdx + j]     = rFinal * Math.sin(pPhi) * Math.cos(pTheta);
+                    const rFinal = globeR + pz; // 若 pz = 0 则完全平铺
+                    // 严格复刻 GlobeScene.js 对应地球表面生成逻辑坐标（X 轴带负号）
+                    allGlobe[startIdx + j]     = -rFinal * Math.sin(pPhi) * Math.cos(pTheta);
                     allGlobe[startIdx + j + 1] = rFinal * Math.cos(pPhi);
                     allGlobe[startIdx + j + 2] = rFinal * Math.sin(pPhi) * Math.sin(pTheta);
 
