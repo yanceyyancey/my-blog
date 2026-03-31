@@ -145,8 +145,15 @@ export default function LoginScene({ onLogin }) {
                     {error && <div className={styles.loginError}>{error}</div>}
                 </form>
 
-                {/* 新宇宙确认弹窗 */}
-                {pendingNew && (
+                <p className={styles.loginHint}>
+                    首次使用代号将自动创建专属星图<br />
+                    代号不区分大小写，仅限字母与数字
+                </p>
+            </div>
+
+            {/* 新宇宙确认弹窗 - 独立于主场景布局 */}
+            {pendingNew && (
+                <div className={styles.confirmOverlay}>
                     <div className={styles.confirmCard}>
                         <div className={styles.confirmIcon}>✦</div>
                         <p className={styles.confirmTitle}>发现未知星图</p>
@@ -169,13 +176,8 @@ export default function LoginScene({ onLogin }) {
                             </button>
                         </div>
                     </div>
-                )}
-
-                <p className={styles.loginHint}>
-                    首次使用代号将自动创建专属星图<br />
-                    代号不区分大小写，仅限字母与数字
-                </p>
-            </div>
+                </div>
+            )}
         </>
     );
 }
