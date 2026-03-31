@@ -7,8 +7,8 @@ import { gsap } from 'gsap';
 import styles from './reading.module.css';
 
 const IS_MOBILE = typeof window !== 'undefined' && window.innerWidth < 768;
-const SAMPLE_W = IS_MOBILE ? 18 : 37;
-const SAMPLE_H = IS_MOBILE ? 24 : 49;
+const SAMPLE_W = IS_MOBILE ? 22 : 45;
+const SAMPLE_H = IS_MOBILE ? 30 : 60;
 const PARTICLE_COUNT = SAMPLE_W * SAMPLE_H;
 
 // ==========================================
