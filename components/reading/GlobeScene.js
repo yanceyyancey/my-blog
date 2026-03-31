@@ -97,7 +97,7 @@ function makeCoverTexture(books, colorHex) {
             });
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-            resolve(tex);
+            resolve({ tex, grid });
         });
     });
 }
@@ -210,11 +210,12 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         const loadContent = async () => {
             await Promise.all(Object.entries(countries).map(async ([code, {books:bks, lat, lon}]) => {
                 const geo = await getCountryGeo(code);
-                if (geo) {
-                    const tex = await makeCoverTexture(bks, countryColor(code));
+                const res = await makeCoverTexture(bks, countryColor(code));
+                if (res && geo) {
+                    const { tex, grid } = res;
                     const ms = buildCountryMeshes(geo, lat, lon, tex);
                     ms.forEach(m => {
-                        m.userData = { code, lat, lon, books:bks };
+                        m.userData = { code, lat, lon, books: bks.filter(b => b.coverUrl).slice(0, 9), meshGrid: grid };
                         scene.add(m); interactableMeshes.push(m);
                         gsap.to(m.material.uniforms.uOpacity, { value: 1, duration: 0.8 });
                     });
@@ -246,8 +247,21 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             ray.setFromCamera(mouse, camera);
             const hits = ray.intersectObjects(interactableMeshes);
             if (hits.length) {
-                const { lat, lon, books:bks } = hits[0].object.userData;
-                runAnim(lat, lon, 8.2, 'fly', () => onBookClickRef.current?.(bks[0]));
+                const hit = hits[0];
+                const { lat, lon, books: bks, meshGrid } = hit.object.userData;
+                
+                // 计算点击的是宫格中的哪一本书
+                let targetBook = bks[0];
+                if (meshGrid > 1 && hit.uv) {
+                    const u = ((hit.uv.x % 1) + 1) % 1;
+                    const v = ((hit.uv.y % 1) + 1) % 1;
+                    const col = Math.floor(u * meshGrid);
+                    const row = Math.floor((1 - v) * meshGrid);
+                    const idx = row * meshGrid + col;
+                    if (bks[idx]) targetBook = bks[idx];
+                }
+                
+                runAnim(lat, lon, 8.2, 'fly', () => onBookClickRef.current?.(targetBook));
             } else { onBookClickRef.current?.(null); }
         });
 
