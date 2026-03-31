@@ -522,7 +522,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
                     isFlying = false;
                     controls.enabled = true;
                     onDone?.();
-                    setTimeout(() => { controls.autoRotate = true; }, 7000);
+                    // 用户正在阅读，不再强制恢复自动旋转，保持视角稳定
                     return;
                 }
                 const t  = ease3(f / FRAMES);
