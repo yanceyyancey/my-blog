@@ -87,14 +87,15 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
-
     useEffect(() => {
         if (isExitingToGlobe) {
+            console.log('[GalaxyScene] Initiating transition to Globe mode...');
             gsap.to(introRef.current, {
-                progress: 2, // 1 -> 2 表示从平面网格形态飞向球体形态
-                duration: 2.2,
+                progress: 2, 
+                duration: 3.5, // 稍微拉长时间，让震撼感拉满
                 ease: 'power2.inOut',
                 onComplete: () => {
+                    console.log('[GalaxyScene] Transition complete.');
                     if (onExited) onExited();
                 }
             });
@@ -165,11 +166,19 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 const cx = (col - (cols - 1) / 2) * SPACING_X;
                 const cy = -(row - (rows - 1) / 2) * SPACING_Y;
 
-                // 计算该本书籍贴在地球表面的真实基准位置（读取数据的经纬度，精准贴附地图原位）
-                const lat = book.lat !== undefined && book.lat !== null ? book.lat : (Math.random() * 180 - 90);
-                const lon = book.lon !== undefined && book.lon !== null ? book.lon : (Math.random() * 360 - 180);
+                // 计算该本书籍贴在地球表面的真实基准位置（优先读取地理坐标）
+                let lat = book.lat !== undefined && book.lat !== null ? book.lat : null;
+                let lon = book.lon !== undefined && book.lon !== null ? book.lon : null;
                 
-                // 转换经纬度为弧度 (注意与 GlobeScene.js 中的 geo2xyz 公式严格保持坐标轴与旋转系绝对一致)
+                if (lat === null || lon === null) {
+                    // 若无地理信息，使用标题的 Hash 产生固定坐标，避免每次刷新乱跳
+                    let hash = 0;
+                    const str = book.title || "";
+                    for (let j = 0; j < str.length; j++) hash = ((hash << 5) - hash) + str.charCodeAt(j);
+                    lat = (Math.abs(hash) % 120) - 60; // -60 to 60
+                    lon = (Math.abs(hash * 31) % 240) - 120; // -120 to 120
+                }
+                
                 const basePhi = (90 - lat) * Math.PI / 180;
                 const baseTheta = (lon + 180) * Math.PI / 180;
                 const globeR = 5.02; // 完全紧贴着未来产生的地球表面 (R=5)
