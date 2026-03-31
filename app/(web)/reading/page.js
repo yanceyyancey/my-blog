@@ -74,13 +74,14 @@ export default function ReadingOdysseyPage() {
 
     // ---- 点击粒子书 ----
     const handleBookClick = useCallback((book) => {
+        if (!book || transitioningTo) return;
         if (viewMode === 'galaxy') {
             setAutoFlyTarget(book);
-            setTransitioningTo('globe'); // 也要触发书墙飞入球体的动画
+            setTransitioningTo('globe'); 
         } else {
             setSelectedBook(book);
         }
-    }, [viewMode]);
+    }, [viewMode, transitioningTo]);
 
     // ---- 金句保存后更新本地状态 ----
     const handleQuoteSaved = useCallback((updatedBook) => {
@@ -179,7 +180,11 @@ export default function ReadingOdysseyPage() {
                                     onClick={() => {
                                         if (viewMode === 'galaxy' || transitioningTo) return;
                                         setAutoFlyTarget(null);
-                                        setViewMode('galaxy');
+                                        setTransitioningTo('galaxy');
+                                        setTimeout(() => {
+                                            setViewMode('galaxy');
+                                            setTransitioningTo(null);
+                                        }, 300); // 预留一小点淡入时间
                                     }}
                                     title="粒子书墙"
                                 >

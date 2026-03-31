@@ -268,6 +268,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             });
 
             const points = new THREE.Points(geo, mat);
+            points.frustumCulled = false; // 散落范围极大，禁用视锥体裁剪防止缩放时突然消失
             scene.add(points);
 
             // 入场动画全局进度控制器
