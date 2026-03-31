@@ -86,15 +86,13 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
     const [loaded, setLoaded] = useState(false);
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
     const introRef = useRef({ progress: 0 });
-    const cameraRef = useRef(null);
     useEffect(() => {
         if (isExitingToGlobe) {
             console.log('>>> [ACTION] Starting Simplified Cinematic Flight...');
-            // 杀掉可能还在运行的入场动画，强制启动离场动画
             gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 1.8, // 提速，增加冲击力
+                duration: 1.8, 
                 ease: 'expo.out',
                 overwrite: 'auto',
                 onComplete: () => {
@@ -102,6 +100,15 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                     if (onExited) onExited();
                 }
             });
+            // 离场时粒子逐渐消失，防止生硬的组件切换感
+            if (sceneRef.current) {
+                gsap.to(sceneRef.current.points.material, {
+                    opacity: 0,
+                    duration: 1.5,
+                    delay: 0.3,
+                    ease: 'power2.in'
+                });
+            }
             if (cameraRef.current) {
                 gsap.to(cameraRef.current.position, {
                     z: 14, 

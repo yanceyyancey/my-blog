@@ -380,11 +380,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
         );
         scene.add(atmosphereMesh);
 
-        // 核心震撼逻辑：书壳成型后，地球背景与星空在 2 秒内优雅浮现
-        gsap.to(globeMat, { opacity: 1, duration: 2.2, delay: 0.2, ease: 'power2.out' });
-        gsap.to(atmosphereMat.uniforms.uOpacity, { value: 0.55, duration: 2.5, delay: 0.5, ease: 'power2.out' });
-
-        /* ── 星空 ── */
+        // GSAP 动画移动到了 loadGlobalPopArt 内部以确保书籍优先生成
+        scene.add(atmosphereMesh);
         const sa = new Float32Array(6000 * 3);
         for (let i = 0; i < sa.length; i++) sa[i] = (Math.random()-0.5)*1000;
         const sg = new THREE.BufferGeometry();
@@ -460,9 +457,10 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
 
         const interactableMeshes = [];
 
-        /* ── 全局波普平铺渲染（无缝一次性加载全部国家）── */
+        /* ── 全局波普平铺渲染（并行极速加载）── */
         const loadGlobalPopArt = async () => {
-            for (const [code, { books:bks, lat, lon }] of Object.entries(byCountry)) {
+            const entries = Object.entries(byCountry);
+            await Promise.all(entries.map(async ([code, { books:bks, lat, lon }]) => {
                 try {
                     const geo = await getCountryGeo(code);
                     if (geo) {
@@ -477,9 +475,12 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
                         });
                     }
                 } catch(e) {
-                    console.warn('[GlobeScene] 无法生成波普国家:', code, e);
+                    console.warn('[GlobeScene] 无法同步国家:', code, e);
                 }
-            }
+            }));
+            // 书籍图层全部生成后，略微延迟后再让地球球体背景优雅浮现
+            gsap.to(globeMat, { opacity: 1, duration: 1.8, delay: 0.1, ease: 'power2.out' });
+            gsap.to(atmosphereMat.uniforms.uOpacity, { value: 0.55, duration: 2.2, delay: 0.3, ease: 'power2.out' });
         };
         loadGlobalPopArt();
 
