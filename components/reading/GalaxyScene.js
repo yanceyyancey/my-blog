@@ -80,11 +80,33 @@ function generateBookParticles(centerX, centerY, centerZ, colors) {
 // ==========================================
 // 主组件：粒子书籍墙
 // ==========================================
-export default function GalaxyScene({ books, onBookClick, onAddBook }) {
+export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingToGlobe, onExited }) {
     const canvasRef = useRef(null);
     const sceneRef = useRef(null);
     const [loaded, setLoaded] = useState(false);
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
+    const introRef = useRef({ progress: 0 });
+    const cameraRef = useRef(null);
+
+    useEffect(() => {
+        if (isExitingToGlobe) {
+            gsap.to(introRef.current, {
+                progress: 2, // 1 -> 2 表示从平面网格形态飞向球体形态
+                duration: 2.2,
+                ease: 'power2.inOut',
+                onComplete: () => {
+                    if (onExited) onExited();
+                }
+            });
+            if (cameraRef.current) {
+                gsap.to(cameraRef.current.position, {
+                    z: 14, // 凑近到 Globe 视图大致的观察距离
+                    duration: 2.2,
+                    ease: 'power2.inOut'
+                });
+            }
+        }
+    }, [isExitingToGlobe, onExited]);
 
     useEffect(() => {
         if (!canvasRef.current || books.length === 0) return;
@@ -97,6 +119,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook }) {
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        cameraRef.current = camera;
 
         // 计算网格行列以及间距配置
         const cols = Math.ceil(Math.sqrt(books.length));
@@ -129,6 +152,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook }) {
             const allColors = new Float32Array(totalParticles * 3);
             const allOrig = new Float32Array(totalParticles * 3); // 最终目标位置
             const allStart = new Float32Array(totalParticles * 3); // 初始散落位置
+            const allGlobe = new Float32Array(totalParticles * 3); // 离场时构成地球外围的位置
 
             bookStartIndices.current = [];
 
@@ -140,6 +164,15 @@ export default function GalaxyScene({ books, onBookClick, onAddBook }) {
                 const row = Math.floor(i / cols);
                 const cx = (col - (cols - 1) / 2) * SPACING_X;
                 const cy = -(row - (rows - 1) / 2) * SPACING_Y;
+
+                // 计算该本书籍飞向地球表面边界的方位（斐波那契球面算法使其均匀包裹在全球）
+                const bookP = (i + 0.5) / books.length;
+                const phi = Math.acos(1 - 2 * bookP); // 0 到 PI
+                const theta = Math.PI * (1 + Math.sqrt(5)) * i; // Golden angle
+                const globeR = 6.2; // 地球半径为5，稍微浮在地球表面一点
+                const bookGx = globeR * Math.sin(phi) * Math.cos(theta);
+                const bookGy = globeR * Math.cos(phi);
+                const bookGz = globeR * Math.sin(phi) * Math.sin(theta);
 
                 // 生成初始散落的随机中心点：增加视场外生成的氛围感
                 const startCX = cx + (Math.random() - 0.5) * 160;
@@ -173,6 +206,11 @@ export default function GalaxyScene({ books, onBookClick, onAddBook }) {
                     allPositions[startIdx + j]     = allStart[startIdx + j];
                     allPositions[startIdx + j + 1] = allStart[startIdx + j + 1];
                     allPositions[startIdx + j + 2] = allStart[startIdx + j + 2];
+
+                    // 离场飞向地球边缘的终点映射 (为了保留书的辨识度，这使得书作为一个切片漂浮过去)
+                    allGlobe[startIdx + j]     = bookGx + px;
+                    allGlobe[startIdx + j + 1] = bookGy + py;
+                    allGlobe[startIdx + j + 2] = bookGz + pz;
 
                     allColors[startIdx + j]     = particleColors[j];
                     allColors[startIdx + j + 1] = particleColors[j + 1];
@@ -214,8 +252,8 @@ export default function GalaxyScene({ books, onBookClick, onAddBook }) {
             scene.add(points);
 
             // 入场动画全局进度控制器
-            const intro = { progress: 0 };
-            gsap.to(intro, {
+            introRef.current.progress = 0;
+            gsap.to(introRef.current, {
                 progress: 1,
                 duration: 2.8,
                 ease: 'power3.out'
@@ -226,17 +264,26 @@ export default function GalaxyScene({ books, onBookClick, onAddBook }) {
             const breathe = () => {
                 t += 0.012;
                 const pos = geo.attributes.position.array;
-                const p = intro.progress;
+                const p = introRef.current.progress;
                 
                 for (let i = 0; i < books.length; i++) {
                     const start = bookStartIndices.current[i];
                     for (let j = 0; j < PARTICLE_COUNT; j++) {
                         const idx = (start + j) * 3;
                         
-                        // 线性插值计算基础位置 (从四面八方飞向矩阵排布)
-                        const bx = allStart[idx]     + (allOrig[idx]     - allStart[idx])     * p;
-                        const by = allStart[idx + 1] + (allOrig[idx + 1] - allStart[idx + 1]) * p;
-                        const bz = allStart[idx + 2] + (allOrig[idx + 2] - allStart[idx + 2]) * p;
+                        let bx, by, bz;
+                        if (p <= 1) {
+                            // Stage 1: 从散落 -> 阵列
+                            bx = allStart[idx]     + (allOrig[idx]     - allStart[idx])     * p;
+                            by = allStart[idx + 1] + (allOrig[idx + 1] - allStart[idx + 1]) * p;
+                            bz = allStart[idx + 2] + (allOrig[idx + 2] - allStart[idx + 2]) * p;
+                        } else {
+                            // Stage 2: 从阵列 -> 地球外围包裹网
+                            const p2 = p - 1; // 范围 0 到 1
+                            bx = allOrig[idx]     + (allGlobe[idx]     - allOrig[idx])     * p2;
+                            by = allOrig[idx + 1] + (allGlobe[idx + 1] - allOrig[idx + 1]) * p2;
+                            bz = allOrig[idx + 2] + (allGlobe[idx + 2] - allOrig[idx + 2]) * p2;
+                        }
 
                         // 整个书架极其轻微的全局移动，不破坏封面成型
                         pos[idx + 2] = bz + Math.sin(t * 0.4 + i * 1.5) * 0.04;

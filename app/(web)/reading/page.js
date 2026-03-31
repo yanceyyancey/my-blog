@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import styles from '@/components/reading/reading.module.css';
 import BookHUD from '@/components/reading/BookHUD';
@@ -33,6 +34,7 @@ export default function ReadingOdysseyPage() {
     // ---- 状态机 ----
     const [phase, setPhase] = useState('login'); // 'login' | 'loading' | 'galaxy'
     const [viewMode, setViewMode] = useState('galaxy'); // 'galaxy' | 'globe'
+    const [transitioningTo, setTransitioningTo] = useState(null); // 'globe' 或 null
     const [user, setUser] = useState(null); // { code, gistId, isNew }
     const [books, setBooks] = useState([]);
     const [selectedBook, setSelectedBook] = useState(null);
@@ -132,9 +134,25 @@ export default function ReadingOdysseyPage() {
                 <>
                     {/* 3D 场景：粒子墙 or 地球 */}
                     {books.length > 0 ? (
-                        viewMode === 'globe'
-                            ? <GlobeScene books={books} onBookClick={(b) => setSelectedBook(b)} autoFlyTarget={autoFlyTarget} />
-                            : <GalaxyScene books={books} onBookClick={handleBookClick} />
+                        <div style={{ width: '100%', height: '100%' }}>
+                            {viewMode === 'globe' ? (
+                                <GlobeScene 
+                                    books={books} 
+                                    onBookClick={(b) => setSelectedBook(b)} 
+                                    autoFlyTarget={autoFlyTarget} 
+                                />
+                            ) : (
+                                <GalaxyScene 
+                                    books={books} 
+                                    onBookClick={handleBookClick} 
+                                    isExitingToGlobe={transitioningTo === 'globe'}
+                                    onExited={() => {
+                                        setViewMode('globe');
+                                        setTransitioningTo(null);
+                                    }}
+                                />
+                            )}
+                        </div>
                     ) : (
                         <div className={styles.loadingOverlay} style={{ background: '#050508' }}>
                             <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.95rem', textAlign: 'center' }}>
@@ -153,15 +171,22 @@ export default function ReadingOdysseyPage() {
                             {/* 视图切换 */}
                             <div className={styles.viewToggle}>
                                 <button
-                                    className={`${styles.viewBtn} ${viewMode === 'galaxy' ? styles.viewBtnActive : ''}`}
-                                    onClick={() => setViewMode('galaxy')}
+                                    className={`${styles.viewBtn} ${viewMode === 'galaxy' && !transitioningTo ? styles.viewBtnActive : ''}`}
+                                    onClick={() => {
+                                        if (viewMode === 'galaxy' || transitioningTo) return;
+                                        // 从地球切回书墙直接加载，会有入场动画
+                                        setViewMode('galaxy');
+                                    }}
                                     title="粒子书墙"
                                 >
                                     ✦ 书墙
                                 </button>
                                 <button
-                                    className={`${styles.viewBtn} ${viewMode === 'globe' ? styles.viewBtnActive : ''}`}
-                                    onClick={() => setViewMode('globe')}
+                                    className={`${styles.viewBtn} ${viewMode === 'globe' || transitioningTo === 'globe' ? styles.viewBtnActive : ''}`}
+                                    onClick={() => {
+                                        if (viewMode === 'globe' || transitioningTo) return;
+                                        setTransitioningTo('globe'); // 触发 GalaxyScene 的离场飞行动画
+                                    }}
                                     title="全球足迹"
                                 >
                                     ◉ 地球
@@ -220,12 +245,12 @@ export default function ReadingOdysseyPage() {
                     )}
 
                     {/* 返回博客 */}
-                    <a href="/" className={styles.backBtn}>
+                    <Link href="/" className={styles.backBtn}>
                         <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
                         </svg>
                         返回博客
-                    </a>
+                    </Link>
                 </>
             )}
 
