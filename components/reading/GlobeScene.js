@@ -234,11 +234,17 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                 camera.position.set(0, 0, 1).applyQuaternion(q).multiplyScalar(r);
                 camera.lookAt(0, 0, 0);
                 if (anim.frames >= anim.maxFrames) {
-                    anim.active = false; controls.enabled = true;
-                    if (anim.type === 'fly') { 
-                        controls.autoRotate = false; 
-                        controls.autoRotateSpeed = 0; 
+                    anim.active = false;
+                    controls.enabled = true;
+                    if (anim.type === 'fly') {
+                        controls.autoRotate = false;
+                        controls.autoRotateSpeed = 0;
+                    } else if (anim.type === 'pull') {
+                        controls.autoRotate = true;
+                        controls.autoRotateSpeed = 0.25;
                     }
+                    // 强制同步一次控制器状态，防止 OrbitControls 丢失新的相机位姿
+                    controls.update();
                     anim.onDone?.();
                 }
             } else {
