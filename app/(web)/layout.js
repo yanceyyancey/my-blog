@@ -1,4 +1,3 @@
-import { Inter } from 'next/font/google'
 import '../globals.css'
 import Link from 'next/link'
 import Navigation from '@/components/Navigation'
@@ -6,7 +5,8 @@ import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { ThemeProvider } from '@/components/ThemeProvider'
 
-const inter = Inter({ subsets: ['latin'], display: 'swap' })
+// Fallback to system fonts to bypass Turbopack font resolve bug
+const inter = { className: 'font-inter-fallback' };
 
 export const metadata = {
   metadataBase: new URL('https://www.yancey.blog'),
