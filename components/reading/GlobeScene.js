@@ -27,20 +27,30 @@ function project2D(lon, lat, cLon, cLat) {
 // ── easeInOutCubic ────────────────────────────────────────────────
 const ease3 = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-// ── GeoJSON module-level cache ────────────────────────────────────
-let geoCache = null;
+// ── GeoJSON 模块级极速索引缓存 ────────────────────────────────────
+let geoCacheIndex = null;
+let geoFetchPromise = null;
 
 async function getCountryGeo(isoA2) {
-    if (!geoCache) {
-        const res = await fetch('/countries.geojson');
-        geoCache = await res.json();
+    if (!geoFetchPromise) {
+        geoFetchPromise = (async () => {
+            try {
+                const res = await fetch('/countries.geojson');
+                const data = await res.json();
+                const index = {};
+                data.features.forEach(f => {
+                    const p = f.properties;
+                    const codes = [p.ISO_A2, p.iso_a2, p.ADM0_A3, p.ISO_A3];
+                    codes.forEach(c => { if(c) index[c] = f.geometry; });
+                });
+                geoCacheIndex = index;
+            } catch(e) {
+                console.warn('[Globe] GeoJSON 加载失败:', e);
+            }
+        })();
     }
-    const feat = geoCache.features.find(f => {
-        const p = f.properties;
-        return p.ISO_A2 === isoA2 || p.iso_a2 === isoA2 ||
-               p.ADM0_A3 === isoA2 || p.ISO_A3 === isoA2;
-    });
-    return feat ? feat.geometry : null;
+    await geoFetchPromise;
+    return geoCacheIndex ? geoCacheIndex[isoA2] : null;
 }
 
 // ── 通过代理加载封面图（解决 CORS）────────────────────────────────

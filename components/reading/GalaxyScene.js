@@ -170,6 +170,12 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
 
             bookStartIndices.current = [];
 
+            // 极致优化：预加载并并行采样所有封面颜色，拒绝串行 Await 导致的白屏尴尬
+            const allCoverColors = await Promise.all(books.map(b => {
+                const proxyUrl = `/api/cover-proxy?url=${encodeURIComponent(b.coverUrl || '')}`;
+                return sampleCoverColors(proxyUrl);
+            }));
+
             for (let i = 0; i < books.length; i++) {
                 const book = books[i];
                 const col = i % cols;
@@ -177,31 +183,26 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 const cx = (col - (cols - 1) / 2) * SPACING_X;
                 const cy = -(row - (rows - 1) / 2) * SPACING_Y;
 
-                // 计算该本书籍贴在地球表面的真实基准位置（优先读取地理坐标）
-                let lat = book.lat !== undefined && book.lat !== null ? book.lat : null;
-                let lon = book.lon !== undefined && book.lon !== null ? book.lon : null;
+                let lat = book.lat ?? null;
+                let lon = book.lon ?? null;
                 
                 if (lat === null || lon === null) {
-                    // 若无地理信息，使用标题的 Hash 产生固定坐标，避免每次刷新乱跳
                     let hash = 0;
                     const str = book.title || "";
                     for (let j = 0; j < str.length; j++) hash = ((hash << 5) - hash) + str.charCodeAt(j);
-                    lat = (Math.abs(hash) % 120) - 60; // -60 to 60
-                    lon = (Math.abs(hash * 31) % 240) - 120; // -120 to 120
+                    lat = (Math.abs(hash) % 120) - 60;
+                    lon = (Math.abs(hash * 31) % 240) - 120;
                 }
                 
                 const basePhi = (90 - lat) * Math.PI / 180;
                 const baseTheta = (lon + 180) * Math.PI / 180;
-                const globeR = 5.02; // 完全紧贴着未来产生的地球表面 (R=5)
+                const globeR = 5.02;
 
-                // 生成初始散落的随机中心点：增加视场外生成的氛围感
                 const startCX = cx + (Math.random() - 0.5) * 160;
                 const startCY = cy + (Math.random() - 0.5) * 160;
                 const startCZ = (Math.random() - 0.5) * 100 + 100;
 
-                // 统一经由自建代理加载图片以防止源站防盗链封锁
-                const proxyUrl = `/api/cover-proxy?url=${encodeURIComponent(book.coverUrl || '')}`;
-                const colors = await sampleCoverColors(proxyUrl);
+                const colors = allCoverColors[i];
                 const { positions, particleColors } = generateBookParticles(0, 0, 0, colors);
 
                 const startIdx = i * PARTICLE_COUNT * 3;
@@ -212,24 +213,19 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                     const py = positions[j + 1];
                     const pz = positions[j + 2];
 
-                    // 目标落点
                     allOrig[startIdx + j]     = cx + px;
                     allOrig[startIdx + j + 1] = cy + py;
-                    allOrig[startIdx + j + 2] = 0 + pz;
+                    allOrig[startIdx + j + 2] = pz;
 
-                    // 初始起飞点
                     allStart[startIdx + j]     = startCX + px;
                     allStart[startIdx + j + 1] = startCY + py;
                     allStart[startIdx + j + 2] = startCZ + pz;
 
-                    // 开始渲染时先放置在起飞点
                     allPositions[startIdx + j]     = allStart[startIdx + j];
                     allPositions[startIdx + j + 1] = allStart[startIdx + j + 1];
                     allPositions[startIdx + j + 2] = allStart[startIdx + j + 2];
 
-                    // 离场飞向地球边缘的终点映射 (书页解体化为星尘，带螺旋涡流感)
-                    // 使用球坐标系直接定义散点：这样在过渡时每一个点都会像星光一样飞向自己的坑位
-                    const rFinal = globeR + pz * 0.2; // 压扁 Z 轴厚度
+                    const rFinal = globeR + pz * 0.2;
                     allGlobe[startIdx + j]     = -rFinal * Math.sin(basePhi) * Math.cos(baseTheta);
                     allGlobe[startIdx + j + 1] = rFinal * Math.cos(basePhi);
                     allGlobe[startIdx + j + 2] = rFinal * Math.sin(basePhi) * Math.sin(baseTheta);
