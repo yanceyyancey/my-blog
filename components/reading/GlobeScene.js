@@ -473,8 +473,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
                             m.userData = { books:bks, lat, lon, code, country: bks[0]?.country || code };
                             scene.add(m);
                             interactableMeshes.push(m);
-                            // 贴放瞬间产生平滑淡入感，复刻“飞过去变成贴图”
-                            gsap.to(m.material.uniforms.uOpacity, { value: 1.0, duration: 1.5, ease: 'power2.out', delay: 0.2 });
+                            // 极速淡入 (0.8s)，对应 GalaxyScene 的落地速度
+                            gsap.to(m.material.uniforms.uOpacity, { value: 1.0, duration: 0.8, ease: 'power2.out' });
                         });
                     }
                 } catch(e) {
@@ -482,8 +482,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
                 }
             }));
             // 书籍图层全部生成后，略微延迟后再让地球球体背景优雅浮现
-            gsap.to(globeMat, { opacity: 1, duration: 1.8, delay: 0.1, ease: 'power2.out' });
-            gsap.to(atmosphereMat.uniforms.uOpacity, { value: 0.55, duration: 2.2, delay: 0.3, ease: 'power2.out' });
+            gsap.to(globeMat, { opacity: 1, duration: 1.2, ease: 'power2.out' });
+            gsap.to(atmosphereMat.uniforms.uOpacity, { value: 0.55, duration: 1.5, ease: 'power2.out' });
         };
         loadGlobalPopArt();
 

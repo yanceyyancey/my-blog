@@ -93,8 +93,8 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 2.2, // 稳重、顺滑的 2.2s
-                ease: 'power3.inOut',
+                duration: 0.8, // 极致快感：0.8s
+                ease: 'power3.out',
                 overwrite: 'auto',
                 onComplete: () => {
                     if (onExited) onExited();
@@ -104,15 +104,15 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             if (sceneRef.current) {
                 gsap.to(sceneRef.current.points.material, {
                     opacity: 0,
-                    size: 0.15, // 仅轻微缩小，保持书的形态
-                    duration: 2.2,
-                    ease: 'power3.inOut'
+                    size: 0.12, 
+                    duration: 0.8,
+                    ease: 'power3.out'
                 });
             }
             if (cameraRef.current) {
                 gsap.to(cameraRef.current.position, {
                     z: 14, 
-                    duration: 1.8,
+                    duration: 0.8,
                     ease: 'expo.out',
                     overwrite: 'auto'
                 });
