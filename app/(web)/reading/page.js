@@ -75,13 +75,10 @@ export default function ReadingOdysseyPage() {
     // ---- 点击粒子书 ----
     const handleBookClick = useCallback((book) => {
         if (!book || transitioningTo) return;
-        if (viewMode === 'galaxy') {
-            setAutoFlyTarget(book);
-            setTransitioningTo('globe'); 
-        } else {
-            setSelectedBook(book);
-        }
-    }, [viewMode, transitioningTo]);
+        // 恢复受用户欢迎的“点击书籍飞向地球对应位置”功能
+        setAutoFlyTarget(book);
+        setTransitioningTo('globe'); 
+    }, [transitioningTo]);
 
     // ---- 金句保存后更新本地状态 ----
     const handleQuoteSaved = useCallback((updatedBook) => {
