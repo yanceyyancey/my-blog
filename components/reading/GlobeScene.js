@@ -61,18 +61,15 @@ function proxyCoverUrl(url) {
 
 // ── 书封面 Canvas 纹理（书封面强制 3:4 平铺，单本无限平铺模式）───────
 function makeCoverTexture(books, colorHex) {
-    // 强制 Canvas 比例为 3:4
     const W = 512;
     const H = Math.round(W / (3 / 4));
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
 
-    // 背景色
     ctx.fillStyle = colorHex;
     ctx.fillRect(0, 0, W, H);
 
-    // 找第一本有封面的书
     const book = books.find(b => b.coverUrl);
     if (!book) {
         const tex = new THREE.CanvasTexture(canvas);
@@ -87,7 +84,6 @@ function makeCoverTexture(books, colorHex) {
         img.crossOrigin = 'anonymous';
         const finish = () => {
             if (img.naturalWidth > 0) {
-                // 原图中心裁剪到 3:4
                 const target = 3 / 4;
                 const src = img.naturalWidth / img.naturalHeight;
                 let sw, sh, sx = 0, sy = 0;
@@ -98,7 +94,6 @@ function makeCoverTexture(books, colorHex) {
                     sw = img.naturalWidth; sh = sw / target;
                     sy = (img.naturalHeight - sh) / 2;
                 }
-                // 画单张满屏
                 ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
             }
             const tex = new THREE.CanvasTexture(canvas);
@@ -111,7 +106,7 @@ function makeCoverTexture(books, colorHex) {
     });
 }
 
-// ── 国家多边形 → ShaderMesh（完美细分贴合曲面，无惧巨大跨度穿模）─
+// ── 国家多边形 → ShaderMesh ───────────────────────────────────────
 function buildCountryMeshes(geometry, cLat, cLon, texture) {
     const meshes = [];
     const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
@@ -132,7 +127,6 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
         const nonIndexedGeo = shapeGeo.toNonIndexed();
         const pArr = nonIndexedGeo.attributes.position.array;
 
-        // 2D 递归细分（Tessellation），防止大国多边形穿透地心
         let triangles = [];
         for (let i = 0; i < pArr.length / 9; i++) {
             triangles.push({
@@ -144,7 +138,7 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
             });
         }
 
-        const maxLen = 1.0; // 细分粒度
+        const maxLen = 1.0;
         let changed = true;
         let safety = 0;
         while(changed && safety < 10) {
@@ -168,8 +162,7 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
         const count = triangles.length * 3;
         const newPos = new Float32Array(count * 3);
         const newUV  = new Float32Array(count * 2);
-        const TILE = 8; // 增加平铺密度使国家版图内的封面更密集，复刻参考图效果
-        // 书籍封面强制 3:4。为避免在世界空间贴图拉伸，让 X 轴向 UV 按照绝对比例等比缩放
+        const TILE = 8;
         const uScaleX = TILE * (3 / 4);
         const uScaleY = TILE;
 
@@ -178,11 +171,10 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
             for (const v2d of tri.pts) {
                 const lon = cosC > 0.001 ? v2d.x / cosC + cLon : cLon;
                 const lat = v2d.y + cLat;
-                const v3d = geo2xyz(lat, lon, R + 0.02); // 严丝合缝贴地飞行
+                const v3d = geo2xyz(lat, lon, R + 0.02);
                 newPos[ptr*3]   = v3d.x;
                 newPos[ptr*3+1] = v3d.y;
                 newPos[ptr*3+2] = v3d.z;
-                // 书封面保持物理世界绝对的 3:4 比例映射
                 newUV[ptr*2]   = v2d.x / uScaleX;
                 newUV[ptr*2+1] = v2d.y / uScaleY;
                 ptr++;
@@ -203,7 +195,6 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
                 varying vec2 vUv;
                 void main() {
                     vec4 col = texture2D(uMap, fract(vUv));
-                    // 彻底满足波普艺术边界裁切 discard: 完全剔除透明像素或在彻底显示前隐藏
                     if (uOpacity <= 0.02 || col.a < 0.1) discard;
                     gl_FragColor = vec4(col.rgb, uOpacity);
                 }
@@ -216,16 +207,15 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
     return meshes;
 }
 
-// ── 粒子流：精细覆盖目标国家的版图，完成分散聚合动画 ─────────────────────
+// ── 粒子流 ───────────────────────────────────────────────────────
 function MathEase(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 
 function spawnParticles(scene, centerSurface, meshes, color, onDone) {
-    const N = 400; // 海量粒子
+    const N = 400;
     const arr = new Float32Array(N * 3);
     const starts = [];
     const targets = [];
 
-    // 精准将粒子目标分配到国家多边形顶点上
     const geoPts = [];
     if (meshes && meshes.length > 0) {
         meshes.forEach(m => {
@@ -235,7 +225,6 @@ function spawnParticles(scene, centerSurface, meshes, color, onDone) {
     }
 
     for (let i = 0; i < N; i++) {
-        // 外围四面八方诞生点
         const th = Math.random() * Math.PI * 2;
         const ph = Math.random() * Math.PI;
         const r  = R + 2 + Math.random() * 5;
@@ -244,11 +233,9 @@ function spawnParticles(scene, centerSurface, meshes, color, onDone) {
         const sz = r * Math.sin(ph) * Math.sin(th);
         starts.push(new THREE.Vector3(sx, sy, sz));
         arr[i*3]=sx; arr[i*3+1]=sy; arr[i*3+2]=sz;
-
-        // 严格遵循重力坍缩：所有粒子被直接吸收、降落在国家的极点中心，然后引发微光爆裂
         targets.push(centerSurface.clone());
     }
-    
+
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
     const mat = new THREE.PointsMaterial({
@@ -277,8 +264,7 @@ function spawnParticles(scene, centerSurface, meshes, color, onDone) {
         for (let i = 0; i < N; i++) {
             const s = starts[i];
             const tg = targets[i];
-            const spin = Math.sin(t * Math.PI) * 2.5 * (i%2===0?1:-1); // 强烈螺旋风暴
-            // 完美收束到目标国家的国境边缘与内部
+            const spin = Math.sin(t * Math.PI) * 2.5 * (i%2===0?1:-1);
             p[i*3]   = s.x + (tg.x - s.x)*t + Math.sin(f*0.12+i)*spin*(1-t);
             p[i*3+1] = s.y + (tg.y - s.y)*t + Math.cos(f*0.12+i)*spin*(1-t);
             p[i*3+2] = s.z + (tg.z - s.z)*t;
@@ -324,7 +310,6 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
     const prevFocusedRef = useRef(isFocused);
     const [sceneReady, setSceneReady] = useState(false);
 
-    // 同步书籍引用，避免 re-init 导致的视角重置
     useEffect(() => { booksRef.current = books; }, [books]);
 
     const init = useCallback(() => {
@@ -360,7 +345,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         const globeMat = new THREE.MeshPhongMaterial({
             color: 0x000000,
             transparent: true,
-            opacity: 0, // 初始不可见，等待书籍汇聚后逐渐浮现
+            opacity: 0,
             shininess: 15,
             specular: 0x222222,
         });
@@ -374,17 +359,17 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                 tex.colorSpace  = THREE.SRGBColorSpace;
                 tex.anisotropy  = renderer.capabilities.getMaxAnisotropy();
                 globeMat.map    = tex;
-                globeMat.color.set(0x8899aa); // 不完全黑，保留海陆深色卫星底图，没有书籍的国家显示此底纹
+                globeMat.color.set(0x8899aa);
                 globeMat.needsUpdate = true;
             }
         );
 
         /* ── 大气层光晕 ── */
         const atmosphereMat = new THREE.ShaderMaterial({
-            uniforms: { 
+            uniforms: {
                 c: { value: new THREE.Color(0x222222) },
-                uOpacity: { value: 0.0 } // 初始不可见
-            }, 
+                uOpacity: { value: 0.0 }
+            },
             vertexShader: `varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
             fragmentShader: `uniform vec3 c; uniform float uOpacity; varying vec3 vN;void main(){float i=pow(0.68-dot(vN,vec3(0,0,1)),5.);gl_FragColor=vec4(c,i*uOpacity);}`,
             side: THREE.FrontSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
@@ -395,7 +380,6 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         );
         scene.add(atmosphereMesh);
 
-        // GSAP 动画移动到了 loadGlobalPopArt 内部以确保书籍优先生成
         scene.add(atmosphereMesh);
         const sa = new Float32Array(6000 * 3);
         for (let i = 0; i < sa.length; i++) sa[i] = (Math.random()-0.5)*1000;
@@ -403,7 +387,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         sg.setAttribute('position', new THREE.BufferAttribute(sa, 3));
         scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color:0xffffff, size:0.35, transparent:true, opacity:0.6 })));
 
-        /* ── 光源（真实日照）── */
+        /* ── 光源 ── */
         scene.add(new THREE.AmbientLight(0xffffff, 1.4));
         const sun = new THREE.DirectionalLight(0xfff8e8, 2.8);
         sun.position.set(30, 15, 15);
@@ -417,7 +401,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             byCountry[b.countryCode].books.push(b);
         });
 
-        /* ── Apple Maps 风格城市标签 ── */
+        /* ── 城市标签 ── */
         const MAJOR_CITIES = [
             { name: "New York", lat: 40.7128, lon: -74.0060 },
             { name: "London", lat: 51.5074, lon: -0.1278 },
@@ -472,7 +456,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
         const interactableMeshes = [];
 
-        /* ── 全局波普平铺渲染（并行极速加载）── */
+        /* ── 全局波普平铺渲染 ── */
         const loadGlobalPopArt = async () => {
             const entries = Object.entries(byCountry);
             await Promise.all(entries.map(async ([code, { books:bks, lat, lon }]) => {
@@ -487,7 +471,6 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                             m.userData = { books:bks, lat, lon, code, country: bks[0]?.country || code };
                             scene.add(m);
                             interactableMeshes.push(m);
-                            // 极速淡入 (0.8s)，对应 GalaxyScene 的落地速度
                             gsap.to(m.material.uniforms.uOpacity, { value: 1.0, duration: 0.8, ease: 'power2.out' });
                         });
                     }
@@ -495,20 +478,19 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                     console.warn('[GlobeScene] 无法同步国家:', code, e);
                 }
             }));
-            // 书籍图层全部生成后，略微延迟后再让地球球体背景优雅浮现
             gsap.to(globeMat, { opacity: 1, duration: 1.2, ease: 'power2.out' });
             gsap.to(atmosphereMat.uniforms.uOpacity, { value: 0.55, duration: 1.5, ease: 'power2.out' });
         };
         loadGlobalPopArt();
 
-        /* ── 飞行动画（球面 Slerp，完全沿球面弧线，不穿地心）── */
+        /* ── 飞行动画 ── */
         const flyTo = (lat, lon, onDone) => {
             isFlying = true;
-            controls.autoRotate = false; // 彻底锁定：一旦触发点击/引导，停止旋转
+            controls.autoRotate = false;
             controls.enabled    = false;
 
             const startPos    = camera.position.clone();
-            const endPos      = geo2xyz(lat, lon, 8.5); // 更深度的放大感 (Radius 8.5)
+            const endPos      = geo2xyz(lat, lon, 8.5);
             const startR      = startPos.length();
             const endR        = endPos.length();
 
@@ -525,7 +507,6 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                 if (f >= FRAMES) {
                     isFlying = false;
                     controls.enabled = true;
-                    // 确保聚焦时彻底停摆
                     controls.autoRotate = false;
                     controls.autoRotateSpeed = 0;
                     onDone?.();
@@ -542,7 +523,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             step();
         };
 
-        /* ── 点击标记：飞行 → 瞬间绽放 → 弹出 HUD ── */
+        /* ── 点击激活 ── */
         const activate = async (mesh, targetBook = null) => {
             if (isFlying) return;
             const { lat, lon, code, books:bks } = mesh.userData;
@@ -550,11 +531,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             const colHex  = countryColorHex(code);
             const colInt  = parseInt(colHex.slice(1), 16);
 
-            // 1. 飞行动画开始
             flyTo(lat, lon, async () => {
-                // 彻底去掉“飞翔的粒子”，直接进入爆破与卡片显示，干脆利落
                 spawnBurst(scene, surface, colInt);
-                // 3. HUD 卡片弹出
                 onBookClick?.(targetBook || bks[0]);
             });
         };
@@ -566,15 +544,14 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         const updateLabels = () => {
             const w = window.innerWidth, h = window.innerHeight;
             const viewVec = camera.position.clone().normalize();
-            
+
             cityLabels.forEach(({ div, anchor }) => {
                 const p = anchor.position.clone().project(camera);
-                if (p.z >= 1.0) { div.style.opacity = '0'; return; } // 背向相机
-                
+                if (p.z >= 1.0) { div.style.opacity = '0'; return; }
+
                 const anchorNorm = anchor.position.clone().normalize();
                 const dot = viewVec.dot(anchorNorm);
-                
-                // 根据球面法线夹角渐隐标签（Apple Maps 边缘渐隐效果）
+
                 if (dot < 0.3) {
                     div.style.opacity = '0';
                 } else {
@@ -591,11 +568,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             mouse.y =-((e.clientY - rc.top)  / rc.height) * 2 + 1;
             ray.setFromCamera(mouse, camera);
             const hits = ray.intersectObjects(interactableMeshes);
-            if (hits.length) {
-                renderer.domElement.style.cursor = 'pointer';
-            } else {
-                renderer.domElement.style.cursor = 'grab';
-            }
+            renderer.domElement.style.cursor = hits.length ? 'pointer' : 'grab';
         };
 
         const onClick = e => {
@@ -608,7 +581,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             if (hits.length) {
                 activate(hits[0].object);
             } else {
-                // 点击空白处：取消聚焦，开始优雅复位
+                // 点击空白处：取消聚焦
                 onBookClick?.(null);
             }
         };
@@ -618,12 +591,9 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
         /* ── 主循环 ── */
         let animId;
-        const clock = new THREE.Clock();
         const animate = () => {
             animId = requestAnimationFrame(animate);
-            const t = clock.getElapsedTime();
             if (!isFlying) controls.update();
-            // markers.forEach((m, i) => m.scale.setScalar(1 + Math.sin(t*2.6 + i*1.4)*0.2));
             updateLabels();
             renderer.render(scene, camera);
         };
@@ -636,33 +606,29 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         };
         window.addEventListener('resize', onResize);
 
-        stateRef.current = { renderer, animId, onResize, onMouseMove, onClick, container, cityLabels, interactableMeshes, activate };
+        // 暴露 controls 和 camera 供 isFocused effect 使用
+        stateRef.current = { renderer, animId, onResize, onMouseMove, onClick, container, cityLabels, interactableMeshes, activate, controls, camera };
         setSceneReady(true);
-    }, [onBookClick]); // 移除 books 依赖，防止视角因数据更新而重置
+    }, [onBookClick]);
 
-    // ---- 监听焦点变化，实现“取消后缓慢恢复旋转” ----
+    // ---- 聚焦锁定 / 取消聚焦恢复 ----
     useEffect(() => {
         const s = stateRef.current;
         if (!s || !sceneReady) return;
 
-        if (!isFocused && prevFocusedRef.current) {
-            // 1. 手动取消聚焦 (点击背景或关闭卡片) -> 极度平滑的电影感回归
-            s.controls.autoRotate = true;
-            // 4秒极长渐进加速，营造“唤醒”世界的呼吸感
-            gsap.to(s.controls, { autoRotateSpeed: 0.25, duration: 4.0, ease: 'sine.inOut' });
-            
-            const currentPos = s.camera.position.clone();
-            const targetPos  = currentPos.clone().normalize().multiplyScalar(16.5);
-            gsap.to(s.camera.position, {
-                x: targetPos.x, y: targetPos.y, z: targetPos.z,
-                duration: 2.2, ease: 'expo.inOut', overwrite: 'auto'
-            });
-        }
-        
         if (isFocused) {
-            // 2. 任何形式的聚焦都会锁定视角
+            // 聚焦：立即停止旋转，相机保持当前位置
             s.controls.autoRotate = false;
             s.controls.autoRotateSpeed = 0;
+        } else if (prevFocusedRef.current) {
+            // 取消聚焦：立即恢复旋转，相机平滑拉回全局视野
+            s.controls.autoRotate = true;
+            s.controls.autoRotateSpeed = 0.25;
+            const tgt = s.camera.position.clone().normalize().multiplyScalar(16.5);
+            gsap.to(s.camera.position, {
+                x: tgt.x, y: tgt.y, z: tgt.z,
+                duration: 2.2, ease: 'expo.inOut', overwrite: 'auto'
+            });
         }
 
         prevFocusedRef.current = isFocused;
@@ -672,7 +638,6 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         if (sceneReady && autoFlyTarget && stateRef.current) {
             const m = stateRef.current.interactableMeshes.find(x => x.userData?.code === autoFlyTarget.countryCode || x.userData?.country === autoFlyTarget.country);
             if (m) {
-                // 等待相机和地球贴图稳定缓冲后执行抛物线跃迁
                 setTimeout(() => stateRef.current.activate(m, autoFlyTarget), 500);
             }
         }

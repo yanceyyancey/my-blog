@@ -28,6 +28,7 @@ export default function LoginScene({ onLogin }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [isTyping, setIsTyping] = useState(false);
+    const [pendingNew, setPendingNew] = useState(null); // { code, gistId } when isNew
     const canvasRef = useRef(null);
     const typingTimer = useRef(null);
 
@@ -100,7 +101,13 @@ export default function LoginScene({ onLogin }) {
             }
             
             if (!res.ok) throw new Error(data.error || '请求失败');
-            onLogin({ code, gistId: data.gistId, isNew: data.isNew });
+            if (data.isNew) {
+                // 新代号：暂停，让用户确认是否创建
+                setPendingNew({ code, gistId: data.gistId });
+                setLoading(false);
+                return;
+            }
+            onLogin({ code, gistId: data.gistId, isNew: false });
         } catch (err) {
             console.error('[login error]', err.message);
             setError(err.message);
@@ -137,6 +144,32 @@ export default function LoginScene({ onLogin }) {
                     </button>
                     {error && <div className={styles.loginError}>{error}</div>}
                 </form>
+
+                {/* 新宇宙确认弹窗 */}
+                {pendingNew && (
+                    <div className={styles.confirmCard}>
+                        <div className={styles.confirmIcon}>✦</div>
+                        <p className={styles.confirmTitle}>发现未知星图</p>
+                        <p className={styles.confirmText}>
+                            代号 <strong>&ldquo;{pendingNew.code}&rdquo;</strong> 尚无记录。<br />
+                            是否为你创建专属宇宙？
+                        </p>
+                        <div className={styles.confirmActions}>
+                            <button
+                                className={styles.confirmCancelBtn}
+                                onClick={() => { setPendingNew(null); setCode(''); }}
+                            >
+                                取消
+                            </button>
+                            <button
+                                className={styles.confirmOkBtn}
+                                onClick={() => onLogin({ code: pendingNew.code, gistId: pendingNew.gistId, isNew: true })}
+                            >
+                                创建宇宙
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <p className={styles.loginHint}>
                     首次使用代号将自动创建专属星图<br />

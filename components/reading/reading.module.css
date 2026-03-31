@@ -734,3 +734,97 @@
     color: #a78bfa !important;
     font-weight: 600;
 }
+
+/* =============================================
+   登录确认弹窗（新宇宙创建）
+   ============================================= */
+.confirmCard {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(10, 8, 20, 0.92);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 24px;
+    padding: 2.5rem 2rem;
+    width: min(360px, 88vw);
+    text-align: center;
+    box-shadow: 0 0 60px rgba(124,58,237,0.2), 0 24px 80px rgba(0,0,0,0.7);
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 50;
+}
+
+.confirmIcon {
+    font-size: 2.4rem;
+    color: #a78bfa;
+    margin-bottom: 1rem;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+.confirmTitle {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 0.6rem;
+    letter-spacing: -0.02em;
+}
+
+.confirmText {
+    font-size: 0.88rem;
+    color: rgba(255,255,255,0.5);
+    line-height: 1.7;
+    margin-bottom: 1.8rem;
+}
+
+.confirmText strong {
+    color: #a78bfa;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.confirmActions {
+    display: flex;
+    gap: 0.8rem;
+    justify-content: center;
+}
+
+.confirmCancelBtn {
+    padding: 0.6rem 1.4rem;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    color: rgba(255,255,255,0.55);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.confirmCancelBtn:hover {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+}
+
+.confirmOkBtn {
+    padding: 0.6rem 1.4rem;
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    letter-spacing: 0.02em;
+}
+
+.confirmOkBtn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(124,58,237,0.5);
+}
+
