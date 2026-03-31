@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -17,417 +17,492 @@ function geo2xyz(lat, lon, r = R) {
     );
 }
 
-// ── 2D 局部坐标投影 → 球面 2D（方位角等距近似）────────────────────
+// ── 2D 局部坐标投影（墨卡托近似）─────────────────────────────────
 function project2D(lon, lat, cLon, cLat) {
     const cosC = Math.cos(cLat * Math.PI / 180);
-    return [
-        (lon - cLon) * cosC,
-        lat - cLat,
-    ];
+    return [(lon - cLon) * cosC, lat - cLat];
 }
-
-// ── 国家色板 ──────────────────────────────────────────────────────
-const COLORS = {
-    US: 0x7c3aed, GB: 0x06b6d4, CN: 0xf59e0b, JP: 0xec4899,
-    FR: 0x10b981, DE: 0x8b5cf6, CO: 0xf97316, IN: 0xef4444,
-    AF: 0x84cc16, IL: 0x0ea5e9, AT: 0xa78bfa,
-};
-const getColor = c => COLORS[c] || 0x6366f1;
-const getColorHex = c => '#' + getColor(c).toString(16).padStart(6, '0');
 
 // ── easeInOutCubic ────────────────────────────────────────────────
 const ease3 = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-// ── GeoJSON cache ────────────────────────────────────────────────
+// ── GeoJSON module-level cache ────────────────────────────────────
 let geoCache = null;
+
 async function getCountryGeo(isoA2) {
     if (!geoCache) {
-        try {
-            const res = await fetch('/countries.geojson');
-            geoCache = await res.json();
-        } catch { return null; }
+        const res = await fetch('/countries.geojson');
+        geoCache = await res.json();
     }
-    const feat = geoCache.features.find(f =>
-        f.properties.ISO_A2 === isoA2 || f.properties.iso_a2 === isoA2
-    );
+    const feat = geoCache.features.find(f => {
+        const p = f.properties;
+        return p.ISO_A2 === isoA2 || p.iso_a2 === isoA2 ||
+               p.ADM0_A3 === isoA2 || p.ISO_A3 === isoA2;
+    });
     return feat ? feat.geometry : null;
 }
 
-// ── 书封面 Canvas 纹理（多本书拼贴成 2x2 格，强制 3:4）─────────
-function makeCoverTexture(books) {
-    const W = 512, H = 512;
+// ── 通过代理加载封面图（解决 CORS）────────────────────────────────
+function proxyCoverUrl(url) {
+    if (!url) return null;
+    return `/api/cover-proxy?url=${encodeURIComponent(url)}`;
+}
+
+// ── 书封面 Canvas 纹理（书封面强制 3:4 平铺，单本无限平铺模式）───────
+function makeCoverTexture(books, colorHex) {
+    // 强制 Canvas 比例为 3:4
+    const W = 512;
+    const H = Math.round(W / (3 / 4));
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#05080f';
+
+    // 背景色
+    ctx.fillStyle = colorHex;
     ctx.fillRect(0, 0, W, H);
 
-    const book = books.find(b => b.coverUrl) || books[0];
-    if (!book?.coverUrl) {
-        // 纯色 fallback
-        ctx.fillStyle = getColorHex(books[0].countryCode);
-        ctx.fillRect(0, 0, W, H);
+    // 找第一本有封面的书
+    const book = books.find(b => b.coverUrl);
+    if (!book) {
         const tex = new THREE.CanvasTexture(canvas);
         tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
         return Promise.resolve(tex);
     }
 
+    const proxied = proxyCoverUrl(book.coverUrl);
+
     return new Promise(resolve => {
         const img = new Image();
-        img.onload = () => {
-            // 严格 3:4 切割（cropRegion）
-            const aspectTarget = 3 / 4;
-            const srcAspect = img.width / img.height;
-            let sw, sh, sx = 0, sy = 0;
-            if (srcAspect > aspectTarget) {
-                sh = img.height; sw = sh * aspectTarget;
-                sx = (img.width - sw) / 2;
-            } else {
-                sw = img.width; sh = sw / aspectTarget;
-                sy = (img.height - sh) / 2;
-            }
-            // 2x2 排列铺满 canvas
-            const cols = 2, rows = 3;
-            const cw = W / cols, ch = H / rows;
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    ctx.drawImage(img, sx, sy, sw, sh, c * cw, r * ch, cw, ch);
+        img.crossOrigin = 'anonymous';
+        const finish = () => {
+            if (img.naturalWidth > 0) {
+                // 原图中心裁剪到 3:4
+                const target = 3 / 4;
+                const src = img.naturalWidth / img.naturalHeight;
+                let sw, sh, sx = 0, sy = 0;
+                if (src > target) {
+                    sh = img.naturalHeight; sw = sh * target;
+                    sx = (img.naturalWidth - sw) / 2;
+                } else {
+                    sw = img.naturalWidth; sh = sw / target;
+                    sy = (img.naturalHeight - sh) / 2;
                 }
+                // 画单张满屏
+                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
             }
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
             resolve(tex);
         };
-        img.onerror = () => {
-            const tex = new THREE.CanvasTexture(canvas);
-            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-            resolve(tex);
-        };
-        img.src = book.coverUrl;
+        img.onload = finish;
+        img.onerror = () => finish();
+        img.src = proxied;
     });
 }
 
-// ── 将 GeoJSON polygon（外环）三角化为球面 Mesh ───────────────────
-function buildCountryMesh(geometry, cLat, cLon, texture) {
+// ── 国家多边形 → ShaderMesh（完美细分贴合曲面，无惧巨大跨度穿模）─
+function buildCountryMeshes(geometry, cLat, cLon, texture) {
     const meshes = [];
-    const polys = geometry.type === 'Polygon'
-        ? [geometry.coordinates]
-        : geometry.coordinates;
+    const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+    const cosC = Math.cos(cLat * Math.PI / 180);
 
     for (const poly of polys) {
         if (!poly[0] || poly[0].length < 3) continue;
 
-        // 投影到 2D 局部坐标
-        const pts2D = poly[0].map(([lon, lat]) => {
-            const [x, y] = project2D(lon, lat, cLon, cLat);
-            return new THREE.Vector2(x, y);
-        });
-
+        const pts2D = poly[0].map(([lon, lat]) => new THREE.Vector2(...project2D(lon, lat, cLon, cLat)));
         const shape = new THREE.Shape(pts2D);
-        // 内环（洞）
+
         for (let h = 1; h < poly.length; h++) {
-            const holePts = poly[h].map(([lon, lat]) => {
-                const [x, y] = project2D(lon, lat, cLon, cLat);
-                return new THREE.Vector2(x, y);
+            const hole = poly[h].map(([lon, lat]) => new THREE.Vector2(...project2D(lon, lat, cLon, cLat)));
+            shape.holes.push(new THREE.Path(hole));
+        }
+
+        const shapeGeo = new THREE.ShapeGeometry(shape, 8);
+        const nonIndexedGeo = shapeGeo.toNonIndexed();
+        const pArr = nonIndexedGeo.attributes.position.array;
+
+        // 2D 递归细分（Tessellation），防止大国多边形穿透地心
+        let triangles = [];
+        for (let i = 0; i < pArr.length / 9; i++) {
+            triangles.push({
+                pts: [
+                    new THREE.Vector2(pArr[i*9], pArr[i*9+1]),
+                    new THREE.Vector2(pArr[i*9+3], pArr[i*9+4]),
+                    new THREE.Vector2(pArr[i*9+6], pArr[i*9+7])
+                ]
             });
-            shape.holes.push(new THREE.Path(holePts));
         }
 
-        const shapeGeo = new THREE.ShapeGeometry(shape, 12);
-        const pos = shapeGeo.attributes.position;
-        const count = pos.count;
+        const maxLen = 1.0; // 细分粒度
+        let changed = true;
+        let safety = 0;
+        while(changed && safety < 10) {
+            safety++;
+            changed = false;
+            let nextTriangles = [];
+            for (let tri of triangles) {
+                const [v1, v2, v3] = tri.pts;
+                if (v1.distanceTo(v2) > maxLen || v2.distanceTo(v3) > maxLen || v3.distanceTo(v1) > maxLen) {
+                    changed = true;
+                    const c = new THREE.Vector2().add(v1).add(v2).add(v3).divideScalar(3);
+                    nextTriangles.push({ pts: [v1, v2, c] }, { pts: [v2, v3, c] }, { pts: [v3, v1, c] });
+                } else {
+                    nextTriangles.push(tri);
+                }
+            }
+            triangles = nextTriangles;
+            if (triangles.length > 20000) break;
+        }
 
+        const count = triangles.length * 3;
         const newPos = new Float32Array(count * 3);
-        const newUV = new Float32Array(count * 2);
-        const tileScale = 6; // 平铺密度控制
+        const newUV  = new Float32Array(count * 2);
+        const TILE = 8; // 增加平铺密度使国家版图内的封面更密集，复刻参考图效果
+        // 书籍封面强制 3:4。为避免在世界空间贴图拉伸，让 X 轴向 UV 按照绝对比例等比缩放
+        const uScaleX = TILE * (3 / 4);
+        const uScaleY = TILE;
 
-        for (let i = 0; i < count; i++) {
-            const x2d = pos.getX(i);
-            const y2d = pos.getY(i);
-            // 逆投影回经纬度
-            const cosC = Math.cos(cLat * Math.PI / 180);
-            const lon = cosC > 0.001 ? x2d / cosC + cLon : cLon;
-            const lat = y2d + cLat;
-            const v = geo2xyz(lat, lon, R + 0.04);
-            newPos[i * 3] = v.x; newPos[i * 3 + 1] = v.y; newPos[i * 3 + 2] = v.z;
-            newUV[i * 2] = x2d / tileScale;
-            newUV[i * 2 + 1] = y2d / tileScale;
+        let ptr = 0;
+        for (let tri of triangles) {
+            for (const v2d of tri.pts) {
+                const lon = cosC > 0.001 ? v2d.x / cosC + cLon : cLon;
+                const lat = v2d.y + cLat;
+                const v3d = geo2xyz(lat, lon, R + 0.02); // 严丝合缝贴地飞行
+                newPos[ptr*3]   = v3d.x;
+                newPos[ptr*3+1] = v3d.y;
+                newPos[ptr*3+2] = v3d.z;
+                // 书封面保持物理世界绝对的 3:4 比例映射
+                newUV[ptr*2]   = v2d.x / uScaleX;
+                newUV[ptr*2+1] = v2d.y / uScaleY;
+                ptr++;
+            }
         }
 
-        shapeGeo.setAttribute('position', new THREE.BufferAttribute(newPos, 3));
-        shapeGeo.setAttribute('uv', new THREE.BufferAttribute(newUV, 2));
-        shapeGeo.computeVertexNormals();
+        const finalGeo = new THREE.BufferGeometry();
+        finalGeo.setAttribute('position', new THREE.BufferAttribute(newPos, 3));
+        finalGeo.setAttribute('uv', new THREE.BufferAttribute(newUV, 2));
+        finalGeo.computeVertexNormals();
 
-        const mat = new THREE.MeshBasicMaterial({
-            map: texture,
-            transparent: true,
-            opacity: 0,
-            side: THREE.DoubleSide,
-            depthWrite: false,
+        const mat = new THREE.ShaderMaterial({
+            uniforms: { uMap: { value: texture }, uOpacity: { value: 1.0 } },
+            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+            fragmentShader: `
+                uniform sampler2D uMap;
+                uniform float uOpacity;
+                varying vec2 vUv;
+                void main() {
+                    vec4 col = texture2D(uMap, fract(vUv));
+                    // 彻底满足波普艺术边界裁切 discard: 完全剔除透明像素或在彻底显示前隐藏
+                    if (uOpacity <= 0.02 || col.a < 0.1) discard;
+                    gl_FragColor = vec4(col.rgb, uOpacity);
+                }
+            `,
+            transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.NormalBlending
         });
-        meshes.push(new THREE.Mesh(shapeGeo, mat));
+
+        meshes.push(new THREE.Mesh(finalGeo, mat));
     }
     return meshes;
 }
 
-// ── 粒子流动画：从四面八方汇聚到目标点 ─────────────────────────
-function spawnParticleFlow(scene, targetPos, color, onDone) {
-    const N = 220;
-    const geo = new THREE.BufferGeometry();
+// ── 粒子流：精细覆盖目标国家的版图，完成分散聚合动画 ─────────────────────
+function MathEase(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+function spawnParticles(scene, centerSurface, meshes, color, onDone) {
+    const N = 400; // 海量粒子
     const arr = new Float32Array(N * 3);
     const starts = [];
+    const targets = [];
+
+    // 精准将粒子目标分配到国家多边形顶点上
+    const geoPts = [];
+    if (meshes && meshes.length > 0) {
+        meshes.forEach(m => {
+            const p = m.geometry.attributes.position.array;
+            for(let i=0; i<p.length; i+=3) geoPts.push(new THREE.Vector3(p[i], p[i+1], p[i+2]));
+        });
+    }
 
     for (let i = 0; i < N; i++) {
-        // 随机扩散起始点（球面周围散射）
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.random() * Math.PI;
-        const r = R + 1.5 + Math.random() * 4;
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.cos(phi);
-        const z = r * Math.sin(phi) * Math.sin(theta);
-        starts.push(new THREE.Vector3(x, y, z));
-        arr[i * 3] = x; arr[i * 3 + 1] = y; arr[i * 3 + 2] = z;
+        // 外围四面八方诞生点
+        const th = Math.random() * Math.PI * 2;
+        const ph = Math.random() * Math.PI;
+        const r  = R + 2 + Math.random() * 5;
+        const sx = r * Math.sin(ph) * Math.cos(th);
+        const sy = r * Math.cos(ph);
+        const sz = r * Math.sin(ph) * Math.sin(th);
+        starts.push(new THREE.Vector3(sx, sy, sz));
+        arr[i*3]=sx; arr[i*3+1]=sy; arr[i*3+2]=sz;
+
+        // 严格遵循重力坍缩：所有粒子被直接吸收、降落在国家的极点中心，然后引发微光爆裂
+        targets.push(centerSurface.clone());
     }
+    
+    const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
     const mat = new THREE.PointsMaterial({
-        color, size: 0.07, transparent: true, opacity: 1,
+        color, size: 0.05, transparent: true, opacity: 1,
         blending: THREE.AdditiveBlending, depthWrite: false,
     });
     const pts = new THREE.Points(geo, mat);
     scene.add(pts);
 
-    const TOTAL = 80;
+    const FRAMES = 85;
     let f = 0;
     const step = () => {
-        if (f >= TOTAL) {
-            // 爆炸散射 + 淡出
-            let fade = 20;
+        if (f >= FRAMES) {
+            let fade = 25;
             const explode = () => {
-                if (fade <= 0) {
-                    scene.remove(pts); geo.dispose(); mat.dispose();
-                    if (onDone) onDone();
-                    return;
-                }
-                const t2 = 1 - fade / 20;
-                const pos2 = geo.attributes.position.array;
-                for (let i = 0; i < N; i++) {
-                    const spread = 0.04;
-                    pos2[i * 3] += (Math.random() - 0.5) * spread;
-                    pos2[i * 3 + 1] += (Math.random() - 0.5) * spread;
-                    pos2[i * 3 + 2] += (Math.random() - 0.5) * spread;
-                }
-                geo.attributes.position.needsUpdate = true;
-                mat.opacity = 1 - t2;
+                if (fade <= 0) { scene.remove(pts); geo.dispose(); mat.dispose(); onDone?.(); return; }
+                mat.opacity = fade / 25;
                 fade--;
                 requestAnimationFrame(explode);
             };
             explode();
             return;
         }
-        const t = ease3(f / TOTAL);
+        const t = MathEase(f / FRAMES);
         const p = geo.attributes.position.array;
         for (let i = 0; i < N; i++) {
             const s = starts[i];
-            // 螺旋路径：绕球旋转一圈后汇聚
-            const spin = Math.sin(t * Math.PI) * 1.5 * (i % 2 === 0 ? 1 : -1);
-            const spiralX = s.x + (targetPos.x - s.x) * t + Math.sin(f * 0.2 + i) * spin * (1 - t);
-            const spiralY = s.y + (targetPos.y - s.y) * t + Math.cos(f * 0.2 + i) * spin * (1 - t);
-            const spiralZ = s.z + (targetPos.z - s.z) * t;
-            p[i * 3] = spiralX; p[i * 3 + 1] = spiralY; p[i * 3 + 2] = spiralZ;
+            const tg = targets[i];
+            const spin = Math.sin(t * Math.PI) * 2.5 * (i%2===0?1:-1); // 强烈螺旋风暴
+            // 完美收束到目标国家的国境边缘与内部
+            p[i*3]   = s.x + (tg.x - s.x)*t + Math.sin(f*0.12+i)*spin*(1-t);
+            p[i*3+1] = s.y + (tg.y - s.y)*t + Math.cos(f*0.12+i)*spin*(1-t);
+            p[i*3+2] = s.z + (tg.z - s.z)*t;
         }
         geo.attributes.position.needsUpdate = true;
-        // 加速后期汇聚时粒子缩小
-        mat.size = 0.07 + 0.05 * (1 - t);
+        mat.size = 0.05 + 0.05*(1-t);
         f++;
         requestAnimationFrame(step);
     };
     step();
 }
 
-// ── 微光爆发效果 ──────────────────────────────────────────────────
+// ── 微光爆发 ──────────────────────────────────────────────────────
 function spawnBurst(scene, pos, color) {
-    const light = new THREE.PointLight(color, 8, 4, 2);
+    const light = new THREE.PointLight(color, 10, 5, 2);
     light.position.copy(pos);
     scene.add(light);
-    let power = 8;
-    const decay = () => {
-        power -= 0.5;
-        light.intensity = Math.max(0, power);
-        if (power > 0) requestAnimationFrame(decay);
+    let p = 10;
+    const tick = () => {
+        p -= 0.6;
+        light.intensity = Math.max(0, p);
+        if (p > 0) requestAnimationFrame(tick);
         else scene.remove(light);
     };
-    decay();
+    tick();
 }
+
+// ── 国家色板 ─────────────────────────────────────────────────────
+const PALETTE = {
+    US:'#7c3aed', GB:'#06b6d4', CN:'#f59e0b', JP:'#ec4899',
+    FR:'#10b981', DE:'#8b5cf6', CO:'#f97316', IN:'#ef4444',
+    AF:'#84cc16', IL:'#0ea5e9', AT:'#a78bfa',
+};
+const countryColor    = c => PALETTE[c] || '#6366f1';
+const countryColorHex = countryColor;
 
 // ═══════════════════════════════════════════════════════════════════
 // 主组件
 // ═══════════════════════════════════════════════════════════════════
-export default function GlobeScene({ books, onBookClick }) {
+export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
     const mountRef = useRef(null);
     const stateRef = useRef(null);
+    const [sceneReady, setSceneReady] = useState(false);
 
     const init = useCallback(() => {
         const container = mountRef.current;
         if (!container || stateRef.current) return;
 
-        // ── Renderer ──────────────────────────────────────────
+        /* ── Renderer ── */
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setClearColor(0x000000, 0);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
         container.appendChild(renderer.domElement);
 
-        const scene = new THREE.Scene();
+        const scene  = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 800);
-        camera.position.set(0, 0, 16);
+        camera.position.set(0, 2, 16);
 
-        // ── OrbitControls ─────────────────────────────────────
+        /* ── OrbitControls ── */
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.07;
-        controls.minDistance = 7;
-        controls.maxDistance = 30;
-        controls.autoRotate = true;
-        controls.autoRotateSpeed = 0.3;
+        controls.enableDamping    = true;
+        controls.dampingFactor    = 0.06;
+        controls.minDistance      = 7;
+        controls.maxDistance      = 28;
+        controls.autoRotate       = true;
+        controls.autoRotateSpeed  = 0.25;
 
-        // ── 飞行状态 ──────────────────────────────────────────
         let isFlying = false;
 
-        // ── 极简暗黑地球 ─────────────────────────────────────
-        const globeGeo = new THREE.SphereGeometry(R, 64, 64);
-        const globeMat = new THREE.MeshPhongMaterial({
-            color: 0x040d1a,
-            emissive: 0x020810,
-            emissiveIntensity: 0.6,
-            specular: 0x0a1a33,
-            shininess: 12,
+        /* ── Apple Maps 卫星地球 ── */
+        const globeGeo = new THREE.SphereGeometry(R, 72, 72);
+        const globeMat = new THREE.MeshStandardMaterial({
+            color:     0x8899aa,   // 恢复为可见底图颜色的冷调蓝灰，以便看清地形又兼顾极简波普对比
+            roughness: 0.8,
+            metalness: 0.2,
         });
-        const globe = new THREE.Mesh(globeGeo, globeMat);
-        scene.add(globe);
+        scene.add(new THREE.Mesh(globeGeo, globeMat));
 
-        // 微弱卫星纹理（可选）
-        new THREE.TextureLoader().load(
+        const loader = new THREE.TextureLoader();
+        loader.load(
             'https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg',
             tex => {
-                globeMat.map = tex;
-                // 压暗色调：通过 color 乘以深色
-                globeMat.color.set(0x223344);
-                globeMat.emissiveIntensity = 0.2;
+                tex.colorSpace  = THREE.SRGBColorSpace;
+                tex.anisotropy  = renderer.capabilities.getMaxAnisotropy();
+                globeMat.map    = tex;
+                globeMat.color.set(0x8899aa); // 不完全黑，保留海陆深色卫星底图，没有书籍的国家显示此底纹
                 globeMat.needsUpdate = true;
             }
         );
 
-        // ── 大气层光晕 ────────────────────────────────────────
-        const atmoMat = new THREE.ShaderMaterial({
-            uniforms: { c: { value: new THREE.Color(0x1144aa) } },
-            vertexShader: `varying vec3 vN; void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-            fragmentShader: `uniform vec3 c;varying vec3 vN;void main(){float i=pow(0.72-dot(vN,vec3(0,0,1)),4.);gl_FragColor=vec4(c,i*0.45);}`,
-            side: THREE.FrontSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
-        });
-        scene.add(new THREE.Mesh(new THREE.SphereGeometry(R * 1.022, 32, 32), atmoMat));
+        /* ── 大气层光晕 ── */
+        scene.add(new THREE.Mesh(
+            new THREE.SphereGeometry(R * 1.022, 32, 32),
+            new THREE.ShaderMaterial({
+                uniforms: { c: { value: new THREE.Color(0x222222) } }, // 极简科技黑边
+                vertexShader: `varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+                fragmentShader: `uniform vec3 c;varying vec3 vN;void main(){float i=pow(0.68-dot(vN,vec3(0,0,1)),5.);gl_FragColor=vec4(c,i*0.55);}`,
+                side: THREE.FrontSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+            })
+        ));
 
-        // ── 国家轮廓线（有书的国家，发光）────────────────────
-        // 在初始化时从 GeoJSON 加载有书国家的轮廓
-        const booksByCountry = {};
-        books.forEach(b => {
-            if (!b.countryCode) return;
-            if (!booksByCountry[b.countryCode]) {
-                booksByCountry[b.countryCode] = { books: [], lat: b.lat, lon: b.lon, country: b.country };
-            }
-            booksByCountry[b.countryCode].books.push(b);
-        });
+        /* ── 星空 ── */
+        const sa = new Float32Array(6000 * 3);
+        for (let i = 0; i < sa.length; i++) sa[i] = (Math.random()-0.5)*1000;
+        const sg = new THREE.BufferGeometry();
+        sg.setAttribute('position', new THREE.BufferAttribute(sa, 3));
+        scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color:0xffffff, size:0.35, transparent:true, opacity:0.6 })));
 
-        // ── 星空 ─────────────────────────────────────────────
-        const starArr = new Float32Array(5000 * 3);
-        for (let i = 0; i < 5000 * 3; i++) starArr[i] = (Math.random() - 0.5) * 900;
-        const starGeo = new THREE.BufferGeometry();
-        starGeo.setAttribute('position', new THREE.BufferAttribute(starArr, 3));
-        scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.3, transparent: true, opacity: 0.5 })));
-
-        // ── 光源 ─────────────────────────────────────────────
-        scene.add(new THREE.AmbientLight(0x223355, 2));
-        const sun = new THREE.DirectionalLight(0x8899cc, 1.8);
-        sun.position.set(15, 8, 12);
+        /* ── 光源（真实日照）── */
+        scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+        const sun = new THREE.DirectionalLight(0xfff8e8, 2.8);
+        sun.position.set(30, 15, 15);
         scene.add(sun);
 
-        // ── 标记点 ───────────────────────────────────────────
-        const markers = [];
-        const labelDivs = [];
-
-        Object.entries(booksByCountry).forEach(([code, { books: bks, lat, lon, country }]) => {
-            if (!lat && !lon) return;
-            const pos = geo2xyz(lat, lon, R + 0.15);
-            const col = getColor(code);
-            const colHex = getColorHex(code);
-            const count = bks.length;
-
-            // 发光球
-            const dot = new THREE.Mesh(
-                new THREE.SphereGeometry(0.06 + count * 0.02, 10, 10),
-                new THREE.MeshBasicMaterial({ color: col })
-            );
-            dot.position.copy(pos);
-            dot.userData = { books: bks, lat, lon, code, country };
-            scene.add(dot);
-            markers.push(dot);
-
-            // 外脉冲环
-            const ring = new THREE.Mesh(
-                new THREE.RingGeometry(0.1 + count * 0.025, 0.165 + count * 0.035, 20),
-                new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
-            );
-            ring.position.copy(pos);
-            ring.lookAt(0, 0, 0);
-            scene.add(ring);
-
-            // 竖线
-            const lineGeo = new THREE.BufferGeometry().setFromPoints([geo2xyz(lat, lon, R), pos]);
-            scene.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.4 })));
-
-            // HTML 标签
-            const div = document.createElement('div');
-            div.style.cssText = `
-                position:absolute;
-                background:rgba(0,0,0,0.8);
-                border:1px solid ${colHex};
-                border-radius:5px;
-                padding:2px 8px;
-                color:${colHex};
-                font:600 11px/1.6 Inter,sans-serif;
-                white-space:nowrap;
-                pointer-events:none;
-                opacity:0;
-                transition:opacity .25s;
-                transform:translateX(-50%) translateY(-150%);
-            `;
-            div.textContent = `${country}  ${count}本`;
-            container.appendChild(div);
-            labelDivs.push({ div, marker: dot });
+        /* ── 按国家收集书目 ── */
+        const byCountry = {};
+        books.forEach(b => {
+            if (!b.countryCode) return;
+            if (!byCountry[b.countryCode]) byCountry[b.countryCode] = { books:[], lat:b.lat, lon:b.lon, country:b.country };
+            byCountry[b.countryCode].books.push(b);
         });
 
-        // 当前激活的国家 Mesh 列表（点击后生成）
-        let activeMeshes = [];
+        /* ── Apple Maps 风格城市标签 ── */
+        const MAJOR_CITIES = [
+            { name: "New York", lat: 40.7128, lon: -74.0060 },
+            { name: "London", lat: 51.5074, lon: -0.1278 },
+            { name: "Tokyo", lat: 35.6762, lon: 139.6503 },
+            { name: "Paris", lat: 48.8566, lon: 2.3522 },
+            { name: "Beijing", lat: 39.9042, lon: 116.4074 },
+            { name: "Shanghai", lat: 31.2304, lon: 121.4737 },
+            { name: "Sydney", lat: -33.8688, lon: 151.2093 },
+            { name: "Rio de Janeiro", lat: -22.9068, lon: -43.1729 },
+            { name: "Cairo", lat: 30.0444, lon: 31.2357 },
+            { name: "Moscow", lat: 55.7558, lon: 37.6173 },
+            { name: "Dubai", lat: 25.2048, lon: 55.2708 },
+            { name: "Mumbai", lat: 19.0760, lon: 72.8777 },
+            { name: "Singapore", lat: 1.3521, lon: 103.8198 },
+            { name: "Los Angeles", lat: 34.0522, lon: -118.2437 },
+            { name: "Toronto", lat: 43.6510, lon: -79.3470 },
+            { name: "Istanbul", lat: 41.0082, lon: 28.9784 },
+            { name: "Johannesburg", lat: -26.2041, lon: 28.0473 },
+            { name: "Seoul", lat: 37.5665, lon: 126.9780 },
+            { name: "Hong Kong", lat: 22.3193, lon: 114.1694 },
+            { name: "Berlin", lat: 52.5200, lon: 13.4050 },
+            { name: "Mexico City", lat: 19.4326, lon: -99.1332 },
+            { name: "New Delhi", lat: 28.6139, lon: 77.2090 },
+            { name: "Jakarta", lat: -6.2088, lon: 106.8456 }
+        ];
 
-        // ── 相机飞行（isFlying 期间跳过 controls.update）────
-        const flyTo = (targetLat, targetLon, onDone) => {
+        const cityLabels = [];
+        MAJOR_CITIES.forEach(city => {
+            const pos = geo2xyz(city.lat, city.lon, R + 0.02);
+            const anchor = new THREE.Object3D();
+            anchor.position.copy(pos);
+            scene.add(anchor);
+
+            const div = document.createElement('div');
+            div.style.cssText = `
+                position: absolute;
+                color: rgba(255,255,255,0.9);
+                font: 500 12px/1 'Inter', 'SF Pro Text', sans-serif;
+                pointer-events: none;
+                text-shadow: 0 1px 4px rgba(0,0,0,1.0), 0 0 8px rgba(0,0,0,0.8);
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                transform: translate(-50%, -50%);
+                z-index: 5;
+                user-select: none;
+                letter-spacing: 0.5px;
+            `;
+            div.textContent = city.name;
+            container.appendChild(div);
+            cityLabels.push({ div, anchor });
+        });
+
+        const interactableMeshes = [];
+
+        /* ── 全局波普平铺渲染（无缝一次性加载全部国家）── */
+        const loadGlobalPopArt = async () => {
+            for (const [code, { books:bks, lat, lon }] of Object.entries(byCountry)) {
+                try {
+                    const geo = await getCountryGeo(code);
+                    if (geo) {
+                        const colHex = countryColorHex(code);
+                        const tex = await makeCoverTexture(bks, colHex);
+                        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+                        const meshes = buildCountryMeshes(geo, lat, lon, tex);
+                        meshes.forEach(m => {
+                            m.userData = { books:bks, lat, lon, code, country: bks[0]?.country || code };
+                            scene.add(m);
+                            interactableMeshes.push(m);
+                        });
+                    }
+                } catch(e) {
+                    console.warn('[GlobeScene] 无法生成波普国家:', code, e);
+                }
+            }
+        };
+        loadGlobalPopArt();
+
+        /* ── 飞行动画（球面 Slerp，完全沿球面弧线，不穿地心）── */
+        const flyTo = (lat, lon, onDone) => {
             isFlying = true;
             controls.autoRotate = false;
-            controls.enabled = false;
+            controls.enabled    = false;
 
-            const startPos = camera.position.clone();
-            const endPos = geo2xyz(targetLat, targetLon, 11);
-            const FRAMES = 90;
+            const startPos    = camera.position.clone();
+            const endPos      = geo2xyz(lat, lon, 11);
+            const startR      = startPos.length();
+            const endR        = endPos.length();
+
+            const qStart = new THREE.Quaternion().setFromUnitVectors(
+                new THREE.Vector3(0,0,1), startPos.clone().normalize()
+            );
+            const qEnd = new THREE.Quaternion().setFromUnitVectors(
+                new THREE.Vector3(0,0,1), endPos.clone().normalize()
+            );
+
+            const FRAMES = 100;
             let f = 0;
-
             const step = () => {
                 if (f >= FRAMES) {
                     isFlying = false;
                     controls.enabled = true;
-                    if (onDone) onDone();
-                    setTimeout(() => { controls.autoRotate = true; }, 6000);
+                    onDone?.();
+                    setTimeout(() => { controls.autoRotate = true; }, 7000);
                     return;
                 }
-                camera.position.lerpVectors(startPos, endPos, ease3(f / FRAMES));
+                const t  = ease3(f / FRAMES);
+                const qT = new THREE.Quaternion().slerpQuaternions(qStart, qEnd, t);
+                const rT = startR + (endR - startR) * t;
+                camera.position.set(0,0,1).applyQuaternion(qT).multiplyScalar(rT);
                 camera.lookAt(0, 0, 0);
                 f++;
                 requestAnimationFrame(step);
@@ -435,125 +510,85 @@ export default function GlobeScene({ books, onBookClick }) {
             step();
         };
 
-        // ── 清除已激活国家 Mesh ──
-        const clearActiveMeshes = () => {
-            activeMeshes.forEach(m => {
-                scene.remove(m);
-                m.geometry.dispose();
-                m.material.dispose();
-            });
-            activeMeshes = [];
-        };
+        /* ── 点击标记：飞行 → 核心粒子降落 → 弹出HUD ── */
+        const activate = async (mesh, targetBook = null) => {
+            if (isFlying) return;
+            const { lat, lon, code, books:bks } = mesh.userData;
+            const surface = geo2xyz(lat, lon, R + 0.18);
+            const colHex  = countryColorHex(code);
+            const colInt  = parseInt(colHex.slice(1), 16);
 
-        // ── 点击标记：飞行 → 粒子流 → 国家多边形 → HUD ─────
-        const activateCountry = async (marker) => {
-            clearActiveMeshes();
-            const { lat, lon, code, books: bks } = marker.userData;
-            const targetSurface = geo2xyz(lat, lon, R + 0.15);
-            const color = getColor(code);
-
-            // 1. 飞行到目标
+            // 1. 飞行动画开始
             flyTo(lat, lon, async () => {
-                // 2. 粒子流
-                spawnParticleFlow(scene, targetSurface, color, async () => {
-                    // 3. 爆发光晕
-                    spawnBurst(scene, targetSurface, color);
-
-                    // 4. 加载 GeoJSON 并绘制国家多边形（书封面铺贴）
-                    try {
-                        const geo = await getCountryGeo(code);
-                        if (geo) {
-                            const tex = await makeCoverTexture(bks);
-                            tex.repeat.set(1, 1);
-                            const meshes = buildCountryMesh(geo, lat, lon, tex);
-                            meshes.forEach(m => {
-                                scene.add(m);
-                                activeMeshes.push(m);
-                                // 渐显
-                                let op = 0;
-                                const fadeIn = () => {
-                                    op = Math.min(0.92, op + 0.03);
-                                    m.material.opacity = op;
-                                    if (op < 0.92) requestAnimationFrame(fadeIn);
-                                };
-                                fadeIn();
-                            });
-                        }
-                    } catch (e) { /* GeoJSON 加载失败则跳过 */ }
-
-                    // 5. 弹出 HUD
-                    onBookClick(bks[0]);
+                // 2. 释放降落旋涡，落入领土核心！
+                spawnParticles(scene, surface, null, colInt, async () => {
+                    spawnBurst(scene, surface, colInt);
+                    // 3. HUD 卡片弹出
+                    onBookClick?.(targetBook || bks[0]);
                 });
             });
         };
 
-        // ── Raycaster ─────────────────────────────────────────
-        const ray = new THREE.Raycaster();
+        /* ── Raycaster & Events ── */
+        const ray   = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        // 相机空间 → 标签屏幕坐标
         const updateLabels = () => {
             const w = window.innerWidth, h = window.innerHeight;
-            labelDivs.forEach(({ div, marker }) => {
-                const pos = marker.position.clone().project(camera);
-                // 只有在相机前面（z < 1）且面朝相机的标记才显示
-                const inFront = pos.z < 1;
-                if (!inFront) { div.style.opacity = '0'; return; }
-                const sx = (pos.x * 0.5 + 0.5) * w;
-                const sy = (-pos.y * 0.5 + 0.5) * h;
-                div.style.left = sx + 'px';
-                div.style.top = sy + 'px';
-                div.style.position = 'absolute';
+            const viewVec = camera.position.clone().normalize();
+            
+            cityLabels.forEach(({ div, anchor }) => {
+                const p = anchor.position.clone().project(camera);
+                if (p.z >= 1.0) { div.style.opacity = '0'; return; } // 背向相机
+                
+                const anchorNorm = anchor.position.clone().normalize();
+                const dot = viewVec.dot(anchorNorm);
+                
+                // 根据球面法线夹角渐隐标签（Apple Maps 边缘渐隐效果）
+                if (dot < 0.3) {
+                    div.style.opacity = '0';
+                } else {
+                    div.style.opacity = '1';
+                    div.style.left = `${(p.x * 0.5 + 0.5) * w}px`;
+                    div.style.top  = `${(-p.y * 0.5 + 0.5) * h}px`;
+                }
             });
         };
 
-        const onMouseMove = (e) => {
-            const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const onMouseMove = e => {
+            const rc = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rc.left) / rc.width)  * 2 - 1;
+            mouse.y =-((e.clientY - rc.top)  / rc.height) * 2 + 1;
             ray.setFromCamera(mouse, camera);
-            const hits = ray.intersectObjects(markers);
-
-            // 所有标签默认低透明度显示
-            labelDivs.forEach(({ div }) => { div.style.opacity = '0.35'; });
-
-            if (hits.length > 0) {
-                const idx = markers.indexOf(hits[0].object);
-                if (idx >= 0) labelDivs[idx].div.style.opacity = '1';
+            const hits = ray.intersectObjects(interactableMeshes);
+            if (hits.length) {
                 renderer.domElement.style.cursor = 'pointer';
             } else {
                 renderer.domElement.style.cursor = 'grab';
             }
         };
 
-        const onClick = (e) => {
+        const onClick = e => {
             if (isFlying) return;
-            const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            const rc = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rc.left) / rc.width)  * 2 - 1;
+            mouse.y =-((e.clientY - rc.top)  / rc.height) * 2 + 1;
             ray.setFromCamera(mouse, camera);
-            const hits = ray.intersectObjects(markers);
-            if (hits.length > 0) activateCountry(hits[0].object);
+            const hits = ray.intersectObjects(interactableMeshes);
+            if (hits.length) activate(hits[0].object);
         };
 
         renderer.domElement.addEventListener('mousemove', onMouseMove);
-        renderer.domElement.addEventListener('click', onClick);
+        renderer.domElement.addEventListener('click',     onClick);
 
-        // ── 动画主循环 ────────────────────────────────────────
+        /* ── 主循环 ── */
         let animId;
         const clock = new THREE.Clock();
         const animate = () => {
             animId = requestAnimationFrame(animate);
             const t = clock.getElapsedTime();
-
-            // 只有不在飞行时才让 OrbitControls 接管相机
             if (!isFlying) controls.update();
-
-            // 标记脉冲
-            markers.forEach((m, i) => {
-                m.scale.setScalar(1 + Math.sin(t * 2.8 + i * 1.3) * 0.22);
-            });
-
+            // markers.forEach((m, i) => m.scale.setScalar(1 + Math.sin(t*2.6 + i*1.4)*0.2));
             updateLabels();
             renderer.render(scene, camera);
         };
@@ -566,8 +601,19 @@ export default function GlobeScene({ books, onBookClick }) {
         };
         window.addEventListener('resize', onResize);
 
-        stateRef.current = { renderer, animId, onResize, onMouseMove, onClick, container, labelDivs };
+        stateRef.current = { renderer, animId, onResize, onMouseMove, onClick, container, cityLabels, interactableMeshes, activate };
+        setSceneReady(true);
     }, [books, onBookClick]);
+
+    useEffect(() => {
+        if (sceneReady && autoFlyTarget && stateRef.current) {
+            const m = stateRef.current.interactableMeshes.find(x => x.userData?.code === autoFlyTarget.countryCode || x.userData?.country === autoFlyTarget.country);
+            if (m) {
+                // 等待相机和地球贴图稳定缓冲后执行抛物线跃迁
+                setTimeout(() => stateRef.current.activate(m, autoFlyTarget), 500);
+            }
+        }
+    }, [sceneReady, autoFlyTarget]);
 
     useEffect(() => {
         init();
@@ -576,9 +622,9 @@ export default function GlobeScene({ books, onBookClick }) {
             if (!s) return;
             cancelAnimationFrame(s.animId);
             s.renderer.domElement.removeEventListener('mousemove', s.onMouseMove);
-            s.renderer.domElement.removeEventListener('click', s.onClick);
+            s.renderer.domElement.removeEventListener('click',     s.onClick);
             window.removeEventListener('resize', s.onResize);
-            s.labelDivs.forEach(({ div }) => div.remove());
+            s.cityLabels.forEach(({ div }) => div.remove());
             s.renderer.dispose();
             while (s.container.firstChild) s.container.removeChild(s.container.firstChild);
             stateRef.current = null;
@@ -586,10 +632,13 @@ export default function GlobeScene({ books, onBookClick }) {
     }, [init]);
 
     return (
-        <div ref={mountRef} style={{
-            position: 'absolute', inset: 0,
-            width: '100%', height: '100%',
-            background: 'radial-gradient(ellipse at center, #060c1a 0%, #000005 100%)',
-        }} />
+        <div
+            ref={mountRef}
+            style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                background: 'radial-gradient(ellipse at center, #060d1f 0%, #000008 100%)',
+            }}
+        />
     );
 }

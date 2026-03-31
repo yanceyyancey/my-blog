@@ -38,6 +38,7 @@ export default function ReadingOdysseyPage() {
     const [selectedBook, setSelectedBook] = useState(null);
     const [showAddModal, setShowAddModal] = useState(false);
     const [searchText, setSearchText] = useState('');
+    const [autoFlyTarget, setAutoFlyTarget] = useState(null);
 
     // ---- 登录成功 ----
     const handleLogin = useCallback(async (userData) => {
@@ -71,8 +72,13 @@ export default function ReadingOdysseyPage() {
 
     // ---- 点击粒子书 ----
     const handleBookClick = useCallback((book) => {
-        setSelectedBook(book);
-    }, []);
+        if (viewMode === 'galaxy') {
+            setViewMode('globe');
+            setAutoFlyTarget(book);
+        } else {
+            setSelectedBook(book);
+        }
+    }, [viewMode]);
 
     // ---- 金句保存后更新本地状态 ----
     const handleQuoteSaved = useCallback((updatedBook) => {
@@ -127,7 +133,7 @@ export default function ReadingOdysseyPage() {
                     {/* 3D 场景：粒子墙 or 地球 */}
                     {books.length > 0 ? (
                         viewMode === 'globe'
-                            ? <GlobeScene books={books} onBookClick={handleBookClick} />
+                            ? <GlobeScene books={books} onBookClick={(b) => setSelectedBook(b)} autoFlyTarget={autoFlyTarget} />
                             : <GalaxyScene books={books} onBookClick={handleBookClick} />
                     ) : (
                         <div className={styles.loadingOverlay} style={{ background: '#050508' }}>
@@ -142,7 +148,7 @@ export default function ReadingOdysseyPage() {
 
                     {/* 顶部 UI 栏 */}
                     <div className={styles.sceneUI}>
-                        <span className={styles.sceneTitle}>{user?.code}'s odyssey</span>
+                        <span className={styles.sceneTitle}>{user?.code}&apos;s odyssey</span>
                         <div className={styles.sceneActions}>
                             {/* 视图切换 */}
                             <div className={styles.viewToggle}>
