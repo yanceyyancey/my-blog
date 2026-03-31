@@ -89,21 +89,25 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
     const cameraRef = useRef(null);
     useEffect(() => {
         if (isExitingToGlobe) {
-            console.log('[GalaxyScene] Initiating transition to Globe mode...');
+            console.log('>>> [ACTION] Starting Galaxy -> Globe Flight...');
+            // 杀掉可能还在运行的入场动画，强制启动离场动画
+            gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 3.5, // 稍微拉长时间，让震撼感拉满
-                ease: 'power2.inOut',
+                duration: 3.2,
+                ease: 'expo.inOut',
+                overwrite: 'auto',
                 onComplete: () => {
-                    console.log('[GalaxyScene] Transition complete.');
+                    console.log('>>> [ACTION] Flight Component: LANDED.');
                     if (onExited) onExited();
                 }
             });
             if (cameraRef.current) {
                 gsap.to(cameraRef.current.position, {
-                    z: 14, // 凑近到 Globe 视图大致的观察距离
-                    duration: 2.2,
-                    ease: 'power2.inOut'
+                    z: 14, 
+                    duration: 3.2,
+                    ease: 'expo.inOut',
+                    overwrite: 'auto'
                 });
             }
         }
@@ -273,8 +277,9 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             introRef.current.progress = 0;
             gsap.to(introRef.current, {
                 progress: 1,
-                duration: 2.8,
-                ease: 'power3.out'
+                duration: 2.4,
+                ease: 'power3.out',
+                overwrite: 'auto'
             });
 
             // 呼吸动画（随机微浮动与入场插值融合在一起，产生平滑集结动效！）
