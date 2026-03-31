@@ -86,6 +86,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
     const [loaded, setLoaded] = useState(false);
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
     const introRef = useRef({ progress: 0 });
+    const cameraRef = useRef(null);
     useEffect(() => {
         if (isExitingToGlobe) {
             console.log('>>> [ACTION] Starting Simplified Cinematic Flight...');
