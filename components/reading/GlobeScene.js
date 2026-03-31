@@ -136,6 +136,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
     const [meshesReady, setMeshesReady] = useState(false);
     const prevFocusedRef = useRef(isFocused);
     const autoFlyCompleteRef = useRef(false);
+    const onBookClickRef = useRef(onBookClick);
+    useEffect(() => { onBookClickRef.current = onBookClick; }, [onBookClick]);
 
     const init = useCallback(() => {
         const container = mountRef.current;
@@ -219,8 +221,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             const hits = ray.intersectObjects(interactableMeshes);
             if (hits.length) {
                 const { lat, lon, books:bks } = hits[0].object.userData;
-                runAnim(lat, lon, 8.2, 'fly', () => onBookClick?.(bks[0]));
-            } else { onBookClick?.(null); }
+                runAnim(lat, lon, 8.2, 'fly', () => onBookClickRef.current?.(bks[0]));
+            } else { onBookClickRef.current?.(null); }
         });
 
         let animId;
@@ -257,7 +259,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         stateRef.current = { renderer, interactableMeshes, controls, camera, runAnim, anim };
         setSceneReady(true);
         return () => { cancelAnimationFrame(animId); renderer.dispose(); };
-    }, [onBookClick]);
+    }, []); // 永远只初始化一次
 
     useEffect(() => {
         const s = stateRef.current; if (!s || !sceneReady) return;
@@ -280,7 +282,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             );
             if (m) {
                 autoFlyCompleteRef.current = true;
-                setTimeout(() => { if(s.anim) s.runAnim(m.userData.lat, m.userData.lon, 8.2, 'fly', () => onBookClick?.(autoFlyTarget)); }, 300);
+                setTimeout(() => { if(s.anim) s.runAnim(m.userData.lat, m.userData.lon, 8.2, 'fly', () => onBookClickRef.current?.(autoFlyTarget)); }, 300);
             }
         }
     }, [sceneReady, meshesReady, autoFlyTarget]);

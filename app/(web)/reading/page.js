@@ -175,7 +175,7 @@ export default function ReadingOdysseyPage() {
                                     className={`${styles.viewBtn} ${viewMode === 'galaxy' && !transitioningTo ? styles.viewBtnActive : ''}`}
                                     onClick={() => {
                                         if (viewMode === 'galaxy' || transitioningTo) return;
-                                        // 从地球切回书墙直接加载，会有入场动画
+                                        setAutoFlyTarget(null);
                                         setViewMode('galaxy');
                                     }}
                                     title="粒子书墙"
@@ -186,6 +186,8 @@ export default function ReadingOdysseyPage() {
                                     className={`${styles.viewBtn} ${viewMode === 'globe' || transitioningTo === 'globe' ? styles.viewBtnActive : ''}`}
                                     onClick={() => {
                                         if (viewMode === 'globe' || transitioningTo) return;
+                                        // 手动切换至地球时，不应带有之前的自动飞行目标
+                                        setAutoFlyTarget(null);
                                         setTransitioningTo('globe'); // 触发 GalaxyScene 的离场飞行动画
                                     }}
                                     title="全球足迹"
