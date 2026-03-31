@@ -165,14 +165,11 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 const cx = (col - (cols - 1) / 2) * SPACING_X;
                 const cy = -(row - (rows - 1) / 2) * SPACING_Y;
 
-                // 计算该本书籍飞向地球表面边界的方位（斐波那契球面算法使其均匀包裹在全球）
+                // 计算该本书籍贴在地球表面的基准位置（斐波那契球面算法使其均匀包裹在全球）
                 const bookP = (i + 0.5) / books.length;
-                const phi = Math.acos(1 - 2 * bookP); // 0 到 PI
-                const theta = Math.PI * (1 + Math.sqrt(5)) * i; // Golden angle
-                const globeR = 6.2; // 地球半径为5，稍微浮在地球表面一点
-                const bookGx = globeR * Math.sin(phi) * Math.cos(theta);
-                const bookGy = globeR * Math.cos(phi);
-                const bookGz = globeR * Math.sin(phi) * Math.sin(theta);
+                const basePhi = Math.acos(1 - 2 * bookP); // 0 到 PI
+                const baseTheta = Math.PI * (1 + Math.sqrt(5)) * i; // Golden angle
+                const globeR = 5.02; // 完全紧贴着未来产生的地球表面 (R=5)
 
                 // 生成初始散落的随机中心点：增加视场外生成的氛围感
                 const startCX = cx + (Math.random() - 0.5) * 160;
@@ -207,10 +204,17 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                     allPositions[startIdx + j + 1] = allStart[startIdx + j + 1];
                     allPositions[startIdx + j + 2] = allStart[startIdx + j + 2];
 
-                    // 离场飞向地球边缘的终点映射 (为了保留书的辨识度，这使得书作为一个切片漂浮过去)
-                    allGlobe[startIdx + j]     = bookGx + px;
-                    allGlobe[startIdx + j + 1] = bookGy + py;
-                    allGlobe[startIdx + j + 2] = bookGz + pz;
+                    // 离场飞向地球边缘的终点映射 (完美球面贴纸算法：使得粒子阵列随经纬度自然弯曲，并紧贴地表)
+                    const d_theta = px / globeR;
+                    const d_phi = py / globeR;
+                    
+                    const pPhi = basePhi - d_phi;
+                    const pTheta = baseTheta + d_theta;
+
+                    const rFinal = globeR + pz; // 若 pz = 0 则完全平铺，若带浮动则呈现高低差
+                    allGlobe[startIdx + j]     = rFinal * Math.sin(pPhi) * Math.cos(pTheta);
+                    allGlobe[startIdx + j + 1] = rFinal * Math.cos(pPhi);
+                    allGlobe[startIdx + j + 2] = rFinal * Math.sin(pPhi) * Math.sin(pTheta);
 
                     allColors[startIdx + j]     = particleColors[j];
                     allColors[startIdx + j + 1] = particleColors[j + 1];
