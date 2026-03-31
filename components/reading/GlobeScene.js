@@ -185,7 +185,7 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
         finalGeo.computeVertexNormals();
 
         const mat = new THREE.ShaderMaterial({
-            uniforms: { uMap: { value: texture }, uOpacity: { value: 1.0 } },
+            uniforms: { uMap: { value: texture }, uOpacity: { value: 0.0 } },
             vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
             fragmentShader: `
                 uniform sampler2D uMap;
@@ -473,6 +473,18 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
                             m.userData = { books:bks, lat, lon, code, country: bks[0]?.country || code };
                             scene.add(m);
                             interactableMeshes.push(m);
+                        });
+                        
+                        // 衔接震撼逻辑：当该国家的地理模型产生后，立即触发“从虚空落入地表”的汇聚粒子
+                        const surface = geo2xyz(lat, lon, R + 0.1);
+                        const colorInt = parseInt(colHex.slice(1), 16);
+                        
+                        // 从“更远的高空”落入，模拟 GalaxyScene 飞旋而来的衔接轨迹
+                        spawnParticles(scene, surface, null, colorInt, () => {
+                            // 粒子着陆瞬间，对应的国家贴图（书籍纹理）优雅淡入，实现“飞过去变成贴图”
+                            meshes.forEach(m => {
+                                gsap.to(m.material.uniforms.uOpacity, { value: 1.0, duration: 1.2, ease: 'power2.out' });
+                            });
                         });
                     }
                 } catch(e) {
