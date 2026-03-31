@@ -526,7 +526,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
             step();
         };
 
-        /* ── 点击标记：飞行 → 核心粒子降落 → 弹出HUD ── */
+        /* ── 点击标记：飞行 → 瞬间绽放 → 弹出 HUD ── */
         const activate = async (mesh, targetBook = null) => {
             if (isFlying) return;
             const { lat, lon, code, books:bks } = mesh.userData;
@@ -536,12 +536,10 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget }) {
 
             // 1. 飞行动画开始
             flyTo(lat, lon, async () => {
-                // 2. 释放降落旋涡，落入领土核心！
-                spawnParticles(scene, surface, null, colInt, async () => {
-                    spawnBurst(scene, surface, colInt);
-                    // 3. HUD 卡片弹出
-                    onBookClick?.(targetBook || bks[0]);
-                });
+                // 彻底去掉“飞翔的粒子”，直接进入爆破与卡片显示，干脆利落
+                spawnBurst(scene, surface, colInt);
+                // 3. HUD 卡片弹出
+                onBookClick?.(targetBook || bks[0]);
             });
         };
 
