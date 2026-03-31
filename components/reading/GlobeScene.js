@@ -1,13 +1,13 @@
 'use client';
 
+// GlobeScene V2.2 - Unified Engine (Absolute Fix)
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { gsap } from 'gsap';
 
-const R = 5; // 地球半径
+const R = 5;
 
-// ── 经纬度 → 3D 坐标 ─────────────────────────────────────────────
 function geo2xyz(lat, lon, r = R) {
     const phi = (90 - lat) * Math.PI / 180;
     const theta = (lon + 180) * Math.PI / 180;
@@ -18,16 +18,13 @@ function geo2xyz(lat, lon, r = R) {
     );
 }
 
-// ── 2D 局部坐标投影（墨卡托近似）─────────────────────────────────
 function project2D(lon, lat, cLon, cLat) {
     const cosC = Math.cos(cLat * Math.PI / 180);
     return [(lon - cLon) * cosC, lat - cLat];
 }
 
-// ── easeInOutCubic ────────────────────────────────────────────────
 const ease3 = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-// ── GeoJSON 模块级极速索引缓存 ────────────────────────────────────
 let geoCacheIndex = null;
 let geoFetchPromise = null;
 
@@ -39,634 +36,250 @@ async function getCountryGeo(isoA2) {
                 const data = await res.json();
                 const index = {};
                 data.features.forEach(f => {
-                    const p = f.properties;
-                    const codes = [p.ISO_A2, p.iso_a2, p.ADM0_A3, p.ISO_A3];
+                    const codes = [f.properties.ISO_A2, f.properties.iso_a2, f.properties.ADM0_A3, f.properties.ISO_A3];
                     codes.forEach(c => { if(c) index[c] = f.geometry; });
                 });
                 geoCacheIndex = index;
-            } catch(e) {
-                console.warn('[Globe] GeoJSON 加载失败:', e);
-            }
+            } catch(e) {}
         })();
     }
     await geoFetchPromise;
     return geoCacheIndex ? geoCacheIndex[isoA2] : null;
 }
 
-// ── 通过代理加载封面图（解决 CORS）────────────────────────────────
-function proxyCoverUrl(url) {
-    if (!url) return null;
-    return `/api/cover-proxy?url=${encodeURIComponent(url)}`;
-}
+function proxyCoverUrl(url) { return url ? `/api/cover-proxy?url=${encodeURIComponent(url)}` : null; }
 
-// ── 书封面 Canvas 纹理（书封面强制 3:4 平铺，单本无限平铺模式）───────
 function makeCoverTexture(books, colorHex) {
-    const W = 512;
-    const H = Math.round(W / (3 / 4));
+    const W = 512, H = 683;
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
-
     ctx.fillStyle = colorHex;
     ctx.fillRect(0, 0, W, H);
-
     const book = books.find(b => b.coverUrl);
-    if (!book) {
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-        return Promise.resolve(tex);
-    }
-
-    const proxied = proxyCoverUrl(book.coverUrl);
-
+    if (!book) return Promise.resolve(new THREE.CanvasTexture(canvas));
     return new Promise(resolve => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
-        const finish = () => {
-            if (img.naturalWidth > 0) {
-                const target = 3 / 4;
-                const src = img.naturalWidth / img.naturalHeight;
-                let sw, sh, sx = 0, sy = 0;
-                if (src > target) {
-                    sh = img.naturalHeight; sw = sh * target;
-                    sx = (img.naturalWidth - sw) / 2;
-                } else {
-                    sw = img.naturalWidth; sh = sw / target;
-                    sy = (img.naturalHeight - sh) / 2;
-                }
-                ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
-            }
+        img.onload = () => {
+            const target = 3/4, src = img.naturalWidth / img.naturalHeight;
+            let sw, sh, sx=0, sy=0;
+            if(src > target) { sh = img.naturalHeight; sw = sh*target; sx=(img.naturalWidth-sw)/2; }
+            else { sw = img.naturalWidth; sh=sw/target; sy=(img.naturalHeight-sh)/2; }
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
             resolve(tex);
         };
-        img.onload = finish;
-        img.onerror = () => finish();
-        img.src = proxied;
+        img.onerror = () => resolve(new THREE.CanvasTexture(canvas));
+        img.src = proxyCoverUrl(book.coverUrl);
     });
 }
 
-// ── 国家多边形 → ShaderMesh ───────────────────────────────────────
 function buildCountryMeshes(geometry, cLat, cLon, texture) {
     const meshes = [];
     const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
     const cosC = Math.cos(cLat * Math.PI / 180);
-
     for (const poly of polys) {
         if (!poly[0] || poly[0].length < 3) continue;
-
         const pts2D = poly[0].map(([lon, lat]) => new THREE.Vector2(...project2D(lon, lat, cLon, cLat)));
         const shape = new THREE.Shape(pts2D);
-
-        for (let h = 1; h < poly.length; h++) {
+        for(let h=1; h<poly.length; h++) {
             const hole = poly[h].map(([lon, lat]) => new THREE.Vector2(...project2D(lon, lat, cLon, cLat)));
             shape.holes.push(new THREE.Path(hole));
         }
-
         const shapeGeo = new THREE.ShapeGeometry(shape, 8);
-        const nonIndexedGeo = shapeGeo.toNonIndexed();
-        const pArr = nonIndexedGeo.attributes.position.array;
-
+        const pArr = shapeGeo.toNonIndexed().attributes.position.array;
         let triangles = [];
-        for (let i = 0; i < pArr.length / 9; i++) {
-            triangles.push({
-                pts: [
-                    new THREE.Vector2(pArr[i*9], pArr[i*9+1]),
-                    new THREE.Vector2(pArr[i*9+3], pArr[i*9+4]),
-                    new THREE.Vector2(pArr[i*9+6], pArr[i*9+7])
-                ]
-            });
-        }
-
-        const maxLen = 1.0;
-        let changed = true;
-        let safety = 0;
+        for(let i=0; i<pArr.length/9; i++) triangles.push({ pts:[new THREE.Vector2(pArr[i*9],pArr[i*9+1]), new THREE.Vector2(pArr[i*9+3],pArr[i*9+4]), new THREE.Vector2(pArr[i*9+6],pArr[i*9+7])] });
+        const maxLen = 1.0; let changed = true, safety = 0;
         while(changed && safety < 10) {
-            safety++;
-            changed = false;
-            let nextTriangles = [];
-            for (let tri of triangles) {
-                const [v1, v2, v3] = tri.pts;
-                if (v1.distanceTo(v2) > maxLen || v2.distanceTo(v3) > maxLen || v3.distanceTo(v1) > maxLen) {
-                    changed = true;
-                    const c = new THREE.Vector2().add(v1).add(v2).add(v3).divideScalar(3);
-                    nextTriangles.push({ pts: [v1, v2, c] }, { pts: [v2, v3, c] }, { pts: [v3, v1, c] });
-                } else {
-                    nextTriangles.push(tri);
-                }
+            safety++; changed = false; let next = [];
+            for(let tri of triangles) {
+                const [v1,v2,v3] = tri.pts;
+                if(v1.distanceTo(v2)>maxLen || v2.distanceTo(v3)>maxLen || v3.distanceTo(v1)>maxLen) {
+                    changed = true; const c = new THREE.Vector2().add(v1).add(v2).add(v3).divideScalar(3);
+                    next.push({pts:[v1,v2,c]}, {pts:[v2,v3,c]}, {pts:[v3,v1,c]});
+                } else next.push(tri);
             }
-            triangles = nextTriangles;
-            if (triangles.length > 20000) break;
+            triangles = next; if(triangles.length > 20000) break;
         }
-
-        const count = triangles.length * 3;
-        const newPos = new Float32Array(count * 3);
-        const newUV  = new Float32Array(count * 2);
-        const TILE = 8;
-        const uScaleX = TILE * (3 / 4);
-        const uScaleY = TILE;
-
-        let ptr = 0;
-        for (let tri of triangles) {
-            for (const v2d of tri.pts) {
-                const lon = cosC > 0.001 ? v2d.x / cosC + cLon : cLon;
-                const lat = v2d.y + cLat;
-                const v3d = geo2xyz(lat, lon, R + 0.02);
-                newPos[ptr*3]   = v3d.x;
-                newPos[ptr*3+1] = v3d.y;
-                newPos[ptr*3+2] = v3d.z;
-                newUV[ptr*2]   = v2d.x / uScaleX;
-                newUV[ptr*2+1] = v2d.y / uScaleY;
-                ptr++;
+        const count = triangles.length*3; const newPos = new Float32Array(count*3), newUV = new Float32Array(count*2);
+        const uScaleX = 8*(3/4), uScaleY = 8; let ptr = 0;
+        for(let tri of triangles) {
+            for(const v2d of tri.pts) {
+                const lon = cosC>0.001 ? v2d.x/cosC + cLon : cLon, lat = v2d.y+cLat, v3d = geo2xyz(lat, lon, R + 0.02);
+                newPos[ptr*3]=v3d.x; newPos[ptr*3+1]=v3d.y; newPos[ptr*3+2]=v3d.z;
+                newUV[ptr*2]=v2d.x/uScaleX; newUV[ptr*2+1]=v2d.y/uScaleY; ptr++;
             }
         }
-
         const finalGeo = new THREE.BufferGeometry();
         finalGeo.setAttribute('position', new THREE.BufferAttribute(newPos, 3));
         finalGeo.setAttribute('uv', new THREE.BufferAttribute(newUV, 2));
         finalGeo.computeVertexNormals();
-
-        const mat = new THREE.ShaderMaterial({
+        meshes.push(new THREE.Mesh(finalGeo, new THREE.ShaderMaterial({
             uniforms: { uMap: { value: texture }, uOpacity: { value: 0.0 } },
             vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-            fragmentShader: `
-                uniform sampler2D uMap;
-                uniform float uOpacity;
-                varying vec2 vUv;
-                void main() {
-                    vec4 col = texture2D(uMap, fract(vUv));
-                    if (uOpacity <= 0.02 || col.a < 0.1) discard;
-                    gl_FragColor = vec4(col.rgb, uOpacity);
-                }
-            `,
-            transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.NormalBlending
-        });
-
-        meshes.push(new THREE.Mesh(finalGeo, mat));
+            fragmentShader: `uniform sampler2D uMap; uniform float uOpacity; varying vec2 vUv; void main() { vec4 col = texture2D(uMap, fract(vUv)); if (uOpacity <= 0.02 || col.a < 0.1) discard; gl_FragColor = vec4(col.rgb, uOpacity); }`,
+            transparent: true, side: THREE.DoubleSide, depthWrite: false
+        })));
     }
     return meshes;
 }
 
-// ── 粒子流 ───────────────────────────────────────────────────────
-function MathEase(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+const countryColor = c => ({ US:'#7c3aed', GB:'#06b6d4', CN:'#f59e0b', JP:'#ec4899', FR:'#10b981', DE:'#8b5cf6', CO:'#f97316', IN:'#ef4444', AF:'#84cc16', IL:'#0ea5e9', AT:'#a78bfa' }[c] || '#6366f1');
 
-function spawnParticles(scene, centerSurface, meshes, color, onDone) {
-    const N = 400;
-    const arr = new Float32Array(N * 3);
-    const starts = [];
-    const targets = [];
-
-    const geoPts = [];
-    if (meshes && meshes.length > 0) {
-        meshes.forEach(m => {
-            const p = m.geometry.attributes.position.array;
-            for(let i=0; i<p.length; i+=3) geoPts.push(new THREE.Vector3(p[i], p[i+1], p[i+2]));
-        });
-    }
-
-    for (let i = 0; i < N; i++) {
-        const th = Math.random() * Math.PI * 2;
-        const ph = Math.random() * Math.PI;
-        const r  = R + 2 + Math.random() * 5;
-        const sx = r * Math.sin(ph) * Math.cos(th);
-        const sy = r * Math.cos(ph);
-        const sz = r * Math.sin(ph) * Math.sin(th);
-        starts.push(new THREE.Vector3(sx, sy, sz));
-        arr[i*3]=sx; arr[i*3+1]=sy; arr[i*3+2]=sz;
-        targets.push(centerSurface.clone());
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-    const mat = new THREE.PointsMaterial({
-        color, size: 0.05, transparent: true, opacity: 1,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-    const pts = new THREE.Points(geo, mat);
-    scene.add(pts);
-
-    const FRAMES = 85;
-    let f = 0;
-    const step = () => {
-        if (f >= FRAMES) {
-            let fade = 25;
-            const explode = () => {
-                if (fade <= 0) { scene.remove(pts); geo.dispose(); mat.dispose(); onDone?.(); return; }
-                mat.opacity = fade / 25;
-                fade--;
-                requestAnimationFrame(explode);
-            };
-            explode();
-            return;
-        }
-        const t = MathEase(f / FRAMES);
-        const p = geo.attributes.position.array;
-        for (let i = 0; i < N; i++) {
-            const s = starts[i];
-            const tg = targets[i];
-            const spin = Math.sin(t * Math.PI) * 2.5 * (i%2===0?1:-1);
-            p[i*3]   = s.x + (tg.x - s.x)*t + Math.sin(f*0.12+i)*spin*(1-t);
-            p[i*3+1] = s.y + (tg.y - s.y)*t + Math.cos(f*0.12+i)*spin*(1-t);
-            p[i*3+2] = s.z + (tg.z - s.z)*t;
-        }
-        geo.attributes.position.needsUpdate = true;
-        mat.size = 0.05 + 0.05*(1-t);
-        f++;
-        requestAnimationFrame(step);
-    };
-    step();
-}
-
-// ── 微光爆发 ──────────────────────────────────────────────────────
-function spawnBurst(scene, pos, color) {
-    const light = new THREE.PointLight(color, 10, 5, 2);
-    light.position.copy(pos);
-    scene.add(light);
-    let p = 10;
-    const tick = () => {
-        p -= 0.6;
-        light.intensity = Math.max(0, p);
-        if (p > 0) requestAnimationFrame(tick);
-        else scene.remove(light);
-    };
-    tick();
-}
-
-// ── 国家色板 ─────────────────────────────────────────────────────
-const PALETTE = {
-    US:'#7c3aed', GB:'#06b6d4', CN:'#f59e0b', JP:'#ec4899',
-    FR:'#10b981', DE:'#8b5cf6', CO:'#f97316', IN:'#ef4444',
-    AF:'#84cc16', IL:'#0ea5e9', AT:'#a78bfa',
-};
-const countryColor    = c => PALETTE[c] || '#6366f1';
-const countryColorHex = countryColor;
-
-// ═══════════════════════════════════════════════════════════════════
-// 主组件
 export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocused }) {
     const mountRef = useRef(null);
     const stateRef = useRef(null);
-    const booksRef = useRef(books);
-    const prevFocusedRef = useRef(isFocused);
     const [sceneReady, setSceneReady] = useState(false);
-
-    useEffect(() => { booksRef.current = books; }, [books]);
+    const [meshesReady, setMeshesReady] = useState(false);
+    const prevFocusedRef = useRef(isFocused);
+    const autoFlyCompleteRef = useRef(false);
 
     const init = useCallback(() => {
         const container = mountRef.current;
         if (!container || stateRef.current) return;
 
-        /* ── Renderer ── */
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(container.clientWidth, container.clientHeight);
         renderer.setClearColor(0x000000, 0);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.1;
         container.appendChild(renderer.domElement);
 
         const scene  = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 800);
-        camera.position.set(0, 2, 16);
+        const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 800);
+        camera.position.set(0, 0, 16.5);
 
-        /* ── OrbitControls ── */
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping    = true;
-        controls.dampingFactor    = 0.06;
-        controls.minDistance      = 7;
-        controls.maxDistance      = 28;
-        controls.autoRotate       = true;
-        controls.autoRotateSpeed  = 0.25;
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.minDistance = 7;
+        controls.maxDistance = 28;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.25;
 
-        let isFlying = false;
+        const anim = { active: false, type: 'none', frames: 0, maxFrames: 60, qS: new THREE.Quaternion(), qE: new THREE.Quaternion(), rS: 16.5, rE: 8.2, onDone: null };
 
-        /* ── Apple Maps 卫星地球 ── */
-        const globeGeo = new THREE.SphereGeometry(R, 72, 72);
-        const globeMat = new THREE.MeshPhongMaterial({
-            color: 0x000000,
-            transparent: true,
-            opacity: 0,
-            shininess: 15,
-            specular: 0x222222,
-        });
-        const globeMesh = new THREE.Mesh(globeGeo, globeMat);
+        const globeMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 64, 64), new THREE.MeshPhongMaterial({ color: 0x000000, transparent: true, opacity: 0 }));
         scene.add(globeMesh);
-
-        const loader = new THREE.TextureLoader();
-        loader.load(
-            'https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg',
-            tex => {
-                tex.colorSpace  = THREE.SRGBColorSpace;
-                tex.anisotropy  = renderer.capabilities.getMaxAnisotropy();
-                globeMat.map    = tex;
-                globeMat.color.set(0x8899aa);
-                globeMat.needsUpdate = true;
-            }
-        );
-
-        /* ── 大气层光晕 ── */
-        const atmosphereMat = new THREE.ShaderMaterial({
-            uniforms: {
-                c: { value: new THREE.Color(0x222222) },
-                uOpacity: { value: 0.0 }
-            },
-            vertexShader: `varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-            fragmentShader: `uniform vec3 c; uniform float uOpacity; varying vec3 vN;void main(){float i=pow(0.68-dot(vN,vec3(0,0,1)),5.);gl_FragColor=vec4(c,i*uOpacity);}`,
-            side: THREE.FrontSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false,
+        new THREE.TextureLoader().load('https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg', tex => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            globeMesh.material.map = tex; globeMesh.material.color.set(0x8899aa); globeMesh.material.needsUpdate = true;
         });
-        const atmosphereMesh = new THREE.Mesh(
-            new THREE.SphereGeometry(R * 1.022, 32, 32),
-            atmosphereMat
-        );
-        scene.add(atmosphereMesh);
 
-        scene.add(atmosphereMesh);
-        const sa = new Float32Array(6000 * 3);
-        for (let i = 0; i < sa.length; i++) sa[i] = (Math.random()-0.5)*1000;
-        const sg = new THREE.BufferGeometry();
-        sg.setAttribute('position', new THREE.BufferAttribute(sa, 3));
-        scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color:0xffffff, size:0.35, transparent:true, opacity:0.6 })));
-
-        /* ── 光源 ── */
         scene.add(new THREE.AmbientLight(0xffffff, 1.4));
-        const sun = new THREE.DirectionalLight(0xfff8e8, 2.8);
-        sun.position.set(30, 15, 15);
-        scene.add(sun);
-
-        /* ── 按国家收集书目 ── */
-        const byCountry = {};
-        books.forEach(b => {
-            if (!b.countryCode) return;
-            if (!byCountry[b.countryCode]) byCountry[b.countryCode] = { books:[], lat:b.lat, lon:b.lon, country:b.country };
-            byCountry[b.countryCode].books.push(b);
-        });
-
-        /* ── 城市标签 ── */
-        const MAJOR_CITIES = [
-            { name: "New York", lat: 40.7128, lon: -74.0060 },
-            { name: "London", lat: 51.5074, lon: -0.1278 },
-            { name: "Tokyo", lat: 35.6762, lon: 139.6503 },
-            { name: "Paris", lat: 48.8566, lon: 2.3522 },
-            { name: "Beijing", lat: 39.9042, lon: 116.4074 },
-            { name: "Shanghai", lat: 31.2304, lon: 121.4737 },
-            { name: "Sydney", lat: -33.8688, lon: 151.2093 },
-            { name: "Rio de Janeiro", lat: -22.9068, lon: -43.1729 },
-            { name: "Cairo", lat: 30.0444, lon: 31.2357 },
-            { name: "Moscow", lat: 55.7558, lon: 37.6173 },
-            { name: "Dubai", lat: 25.2048, lon: 55.2708 },
-            { name: "Mumbai", lat: 19.0760, lon: 72.8777 },
-            { name: "Singapore", lat: 1.3521, lon: 103.8198 },
-            { name: "Los Angeles", lat: 34.0522, lon: -118.2437 },
-            { name: "Toronto", lat: 43.6510, lon: -79.3470 },
-            { name: "Istanbul", lat: 41.0082, lon: 28.9784 },
-            { name: "Johannesburg", lat: -26.2041, lon: 28.0473 },
-            { name: "Seoul", lat: 37.5665, lon: 126.9780 },
-            { name: "Hong Kong", lat: 22.3193, lon: 114.1694 },
-            { name: "Berlin", lat: 52.5200, lon: 13.4050 },
-            { name: "Mexico City", lat: 19.4326, lon: -99.1332 },
-            { name: "New Delhi", lat: 28.6139, lon: 77.2090 },
-            { name: "Jakarta", lat: -6.2088, lon: 106.8456 }
-        ];
-
-        const cityLabels = [];
-        MAJOR_CITIES.forEach(city => {
-            const pos = geo2xyz(city.lat, city.lon, R + 0.02);
-            const anchor = new THREE.Object3D();
-            anchor.position.copy(pos);
-            scene.add(anchor);
-
-            const div = document.createElement('div');
-            div.style.cssText = `
-                position: absolute;
-                color: rgba(255,255,255,0.9);
-                font: 500 12px/1 'Inter', 'SF Pro Text', sans-serif;
-                pointer-events: none;
-                text-shadow: 0 1px 4px rgba(0,0,0,1.0), 0 0 8px rgba(0,0,0,0.8);
-                opacity: 0;
-                transition: opacity 0.3s ease;
-                transform: translate(-50%, -50%);
-                z-index: 5;
-                user-select: none;
-                letter-spacing: 0.5px;
-            `;
-            div.textContent = city.name;
-            container.appendChild(div);
-            cityLabels.push({ div, anchor });
-        });
+        const sun = new THREE.DirectionalLight(0xfff8e8, 2.5); sun.position.set(30, 20, 10); scene.add(sun);
 
         const interactableMeshes = [];
+        const countries = {};
+        books.forEach(b => {
+            if (!b.countryCode) return;
+            if (!countries[b.countryCode]) countries[b.countryCode] = { books:[], lat:b.lat, lon:b.lon };
+            countries[b.countryCode].books.push(b);
+        });
 
-        /* ── 全局波普平铺渲染 ── */
-        const loadGlobalPopArt = async () => {
-            const entries = Object.entries(byCountry);
-            await Promise.all(entries.map(async ([code, { books:bks, lat, lon }]) => {
-                try {
-                    const geo = await getCountryGeo(code);
-                    if (geo) {
-                        const colHex = countryColorHex(code);
-                        const tex = await makeCoverTexture(bks, colHex);
-                        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-                        const meshes = buildCountryMeshes(geo, lat, lon, tex);
-                        meshes.forEach(m => {
-                            m.userData = { books:bks, lat, lon, code, country: bks[0]?.country || code };
-                            scene.add(m);
-                            interactableMeshes.push(m);
-                            gsap.to(m.material.uniforms.uOpacity, { value: 1.0, duration: 0.8, ease: 'power2.out' });
-                        });
-                    }
-                } catch(e) {
-                    console.warn('[GlobeScene] 无法同步国家:', code, e);
+        const loadContent = async () => {
+            await Promise.all(Object.entries(countries).map(async ([code, {books:bks, lat, lon}]) => {
+                const geo = await getCountryGeo(code);
+                if (geo) {
+                    const tex = await makeCoverTexture(bks, countryColor(code));
+                    const ms = buildCountryMeshes(geo, lat, lon, tex);
+                    ms.forEach(m => {
+                        m.userData = { code, lat, lon, books:bks };
+                        scene.add(m); interactableMeshes.push(m);
+                        gsap.to(m.material.uniforms.uOpacity, { value: 1, duration: 0.8 });
+                    });
                 }
             }));
-            gsap.to(globeMat, { opacity: 1, duration: 1.2, ease: 'power2.out' });
-            gsap.to(atmosphereMat.uniforms.uOpacity, { value: 0.55, duration: 1.5, ease: 'power2.out' });
+            gsap.to(globeMesh.material, { opacity: 1, duration: 1.2 });
+            setMeshesReady(true);
         };
-        loadGlobalPopArt();
+        loadContent();
 
-        /* ── 飞行动画 ── */
-        const flyTo = (lat, lon, onDone) => {
-            isFlying = true;
-            controls.autoRotate = false;
-            controls.enabled    = false;
-
-            const startPos    = camera.position.clone();
-            const endPos      = geo2xyz(lat, lon, 8.5);
-            const startR      = startPos.length();
-            const endR        = endPos.length();
-
-            const qStart = new THREE.Quaternion().setFromUnitVectors(
-                new THREE.Vector3(0,0,1), startPos.clone().normalize()
-            );
-            const qEnd = new THREE.Quaternion().setFromUnitVectors(
-                new THREE.Vector3(0,0,1), endPos.clone().normalize()
-            );
-
-            const FRAMES = 100;
-            let f = 0;
-            const step = () => {
-                if (f >= FRAMES) {
-                    isFlying = false;
-                    controls.enabled = true;
-                    controls.autoRotate = false;
-                    controls.autoRotateSpeed = 0;
-                    onDone?.();
-                    return;
-                }
-                const t  = ease3(f / FRAMES);
-                const qT = new THREE.Quaternion().slerpQuaternions(qStart, qEnd, t);
-                const rT = startR + (endR - startR) * t;
-                camera.position.set(0,0,1).applyQuaternion(qT).multiplyScalar(rT);
-                camera.lookAt(0, 0, 0);
-                f++;
-                requestAnimationFrame(step);
-            };
-            step();
+        const runAnim = (lat, lon, targetR, type, onDone) => {
+            anim.active = false; // 杀掉之前的
+            const startPos = camera.position.clone();
+            const endPos = (type === 'pull') ? startPos.clone().normalize().multiplyScalar(targetR) : geo2xyz(lat, lon, targetR);
+            anim.qS.setFromUnitVectors(new THREE.Vector3(0,0,1), startPos.clone().normalize());
+            anim.qE.setFromUnitVectors(new THREE.Vector3(0,0,1), endPos.clone().normalize());
+            anim.rS = startPos.length(); anim.rE = targetR;
+            anim.frames = 0; anim.type = type; anim.onDone = onDone;
+            anim.active = true;
+            controls.enabled = false; controls.autoRotate = false;
         };
 
-        /* ── 点击激活 ── */
-        const activate = async (mesh, targetBook = null) => {
-            if (isFlying) return;
-            const { lat, lon, code, books:bks } = mesh.userData;
-            const surface = geo2xyz(lat, lon, R + 0.18);
-            const colHex  = countryColorHex(code);
-            const colInt  = parseInt(colHex.slice(1), 16);
-
-            flyTo(lat, lon, async () => {
-                spawnBurst(scene, surface, colInt);
-                onBookClick?.(targetBook || bks[0]);
-            });
-        };
-
-        /* ── Raycaster & Events ── */
-        const ray   = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        const updateLabels = () => {
-            const w = window.innerWidth, h = window.innerHeight;
-            const viewVec = camera.position.clone().normalize();
-
-            cityLabels.forEach(({ div, anchor }) => {
-                const p = anchor.position.clone().project(camera);
-                if (p.z >= 1.0) { div.style.opacity = '0'; return; }
-
-                const anchorNorm = anchor.position.clone().normalize();
-                const dot = viewVec.dot(anchorNorm);
-
-                if (dot < 0.3) {
-                    div.style.opacity = '0';
-                } else {
-                    div.style.opacity = '1';
-                    div.style.left = `${(p.x * 0.5 + 0.5) * w}px`;
-                    div.style.top  = `${(-p.y * 0.5 + 0.5) * h}px`;
-                }
-            });
-        };
-
-        const onMouseMove = e => {
-            const rc = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((e.clientX - rc.left) / rc.width)  * 2 - 1;
-            mouse.y =-((e.clientY - rc.top)  / rc.height) * 2 + 1;
-            ray.setFromCamera(mouse, camera);
-            const hits = ray.intersectObjects(interactableMeshes);
-            renderer.domElement.style.cursor = hits.length ? 'pointer' : 'grab';
-        };
-
-        const onClick = e => {
-            if (isFlying) return;
-            const rc = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((e.clientX - rc.left) / rc.width)  * 2 - 1;
-            mouse.y =-((e.clientY - rc.top)  / rc.height) * 2 + 1;
+        const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+        renderer.domElement.addEventListener('click', e => {
+            if (anim.active) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y =-((e.clientY - rect.top) / rect.height) * 2 + 1;
             ray.setFromCamera(mouse, camera);
             const hits = ray.intersectObjects(interactableMeshes);
             if (hits.length) {
-                activate(hits[0].object);
-            } else {
-                // 点击空白处：取消聚焦
-                onBookClick?.(null);
-            }
-        };
+                const { lat, lon, books:bks } = hits[0].object.userData;
+                runAnim(lat, lon, 8.2, 'fly', () => onBookClick?.(bks[0]));
+            } else { onBookClick?.(null); }
+        });
 
-        renderer.domElement.addEventListener('mousemove', onMouseMove);
-        renderer.domElement.addEventListener('click',     onClick);
-
-        /* ── 主循环 ── */
         let animId;
-        const animate = () => {
-            animId = requestAnimationFrame(animate);
-            if (!isFlying) controls.update();
-            updateLabels();
+        const loop = () => {
+            animId = requestAnimationFrame(loop);
+            if (anim.active) {
+                anim.frames++;
+                const t = ease3(anim.frames / anim.maxFrames);
+                const q = new THREE.Quaternion().slerpQuaternions(anim.qS, anim.qE, t);
+                const r = anim.rS + (anim.rE - anim.rS) * t;
+                camera.position.set(0, 0, 1).applyQuaternion(q).multiplyScalar(r);
+                camera.lookAt(0, 0, 0);
+                if (anim.frames >= anim.maxFrames) {
+                    anim.active = false; controls.enabled = true;
+                    if (anim.type === 'fly') { 
+                        controls.autoRotate = false; 
+                        controls.autoRotateSpeed = 0; 
+                    }
+                    anim.onDone?.();
+                }
+            } else {
+                controls.update();
+            }
             renderer.render(scene, camera);
         };
-        animate();
+        loop();
 
-        const onResize = () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        };
-        window.addEventListener('resize', onResize);
-
-        // 暴露 controls 和 camera 供 isFocused effect 使用
-        stateRef.current = { renderer, animId, onResize, onMouseMove, onClick, container, cityLabels, interactableMeshes, activate, controls, camera };
+        stateRef.current = { renderer, interactableMeshes, controls, camera, runAnim, anim };
         setSceneReady(true);
+        return () => { cancelAnimationFrame(animId); renderer.dispose(); };
     }, [onBookClick]);
 
-    // ---- 聚焦锁定 / 取消聚焦恢复 ----
     useEffect(() => {
-        const s = stateRef.current;
-        if (!s || !sceneReady) return;
-
+        const s = stateRef.current; if (!s || !sceneReady) return;
         if (isFocused) {
-            // 聚焦：立即停止旋转，相机保持当前位置
-            s.controls.autoRotate = false;
-            s.controls.autoRotateSpeed = 0;
+            s.controls.autoRotate = false; s.controls.autoRotateSpeed = 0;
+            if (s.anim.active && s.anim.type === 'pull') s.anim.active = false; 
         } else if (prevFocusedRef.current) {
-            // 取消聚焦：立即恢复旋转，相机平滑拉回全局视野
-            s.controls.autoRotate = true;
-            s.controls.autoRotateSpeed = 0.25;
-            const tgt = s.camera.position.clone().normalize().multiplyScalar(16.5);
-            gsap.to(s.camera.position, {
-                x: tgt.x, y: tgt.y, z: tgt.z,
-                duration: 2.2, ease: 'expo.inOut', overwrite: 'auto'
-            });
+            s.controls.autoRotate = true; s.controls.autoRotateSpeed = 0.25;
+            if (s.camera.position.length() < 12) s.runAnim(0, 0, 16.5, 'pull');
         }
-
         prevFocusedRef.current = isFocused;
     }, [isFocused, sceneReady]);
 
     useEffect(() => {
-        if (sceneReady && autoFlyTarget && stateRef.current) {
-            const m = stateRef.current.interactableMeshes.find(x => x.userData?.code === autoFlyTarget.countryCode || x.userData?.country === autoFlyTarget.country);
+        const s = stateRef.current;
+        if (sceneReady && meshesReady && autoFlyTarget && s && !autoFlyCompleteRef.current) {
+            const m = s.interactableMeshes.find(x => 
+                x.userData?.code === autoFlyTarget.countryCode || 
+                x.userData?.country === autoFlyTarget.country
+            );
             if (m) {
-                setTimeout(() => stateRef.current.activate(m, autoFlyTarget), 500);
+                autoFlyCompleteRef.current = true;
+                setTimeout(() => { if(s.anim) s.runAnim(m.userData.lat, m.userData.lon, 8.2, 'fly', () => onBookClick?.(autoFlyTarget)); }, 300);
             }
         }
-    }, [sceneReady, autoFlyTarget]);
+    }, [sceneReady, meshesReady, autoFlyTarget]);
 
-    useEffect(() => {
-        init();
-        return () => {
-            const s = stateRef.current;
-            if (!s) return;
-            cancelAnimationFrame(s.animId);
-            s.renderer.domElement.removeEventListener('mousemove', s.onMouseMove);
-            s.renderer.domElement.removeEventListener('click',     s.onClick);
-            window.removeEventListener('resize', s.onResize);
-            s.cityLabels.forEach(({ div }) => div.remove());
-            s.renderer.dispose();
-            while (s.container.firstChild) s.container.removeChild(s.container.firstChild);
-            stateRef.current = null;
-        };
-    }, [init]);
+    useEffect(() => { const cleanup = init(); return cleanup; }, [init]);
 
-    return (
-        <div
-            ref={mountRef}
-            style={{
-                position: 'absolute', inset: 0,
-                width: '100%', height: '100%',
-                background: 'radial-gradient(ellipse at center, #060d1f 0%, #000008 100%)',
-            }}
-        />
-    );
+    return <div ref={mountRef} style={{ position:'absolute', inset:0, background:'#000' }} />;
 }
