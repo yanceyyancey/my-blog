@@ -7,8 +7,8 @@ import { gsap } from 'gsap';
 import styles from './reading.module.css';
 
 const IS_MOBILE = typeof window !== 'undefined' && window.innerWidth < 768;
-const SAMPLE_W = IS_MOBILE ? 15 : 30;
-const SAMPLE_H = IS_MOBILE ? 20 : 40;
+const SAMPLE_W = IS_MOBILE ? 18 : 37;
+const SAMPLE_H = IS_MOBILE ? 24 : 49;
 const PARTICLE_COUNT = SAMPLE_W * SAMPLE_H;
 
 // ==========================================
@@ -30,10 +30,10 @@ function sampleCoverColors(base64Src) {
                 const imageData = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
                 const colors = [];
                 for (let i = 0; i < SAMPLE_W * SAMPLE_H; i++) {
-                    // 采样并增加 15% 的亮度增益，让粒子更闪亮
-                    const r = Math.min(1.0, (imageData[i * 4] / 255) * 1.15);
-                    const g = Math.min(1.0, (imageData[i * 4 + 1] / 255) * 1.15);
-                    const b = Math.min(1.0, (imageData[i * 4 + 2] / 255) * 1.15);
+                    // 大幅增加采样增益 (2.0x)，强制让所有封面粒子更加闪亮
+                    const r = Math.min(1.0, (imageData[i * 4] / 255) * 2.0);
+                    const g = Math.min(1.0, (imageData[i * 4 + 1] / 255) * 2.0);
+                    const b = Math.min(1.0, (imageData[i * 4 + 2] / 255) * 2.0);
                     colors.push(r, g, b);
                 }
                 resolve(colors);
@@ -247,16 +247,16 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             circleCanvas.height = 32;
             const ctx = circleCanvas.getContext('2d');
             const gradient = ctx.createRadialGradient(16, 16, 2, 16, 16, 16);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');      // 高光心
-            gradient.addColorStop(0.25, 'rgba(255, 255, 255, 0.9)');  
-            gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.4)');  // 软边缘
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      // 剔除边缘
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');      // 高光核心
+            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 1)');     // 扩大白心区域
+            gradient.addColorStop(0.65, 'rgba(255, 255, 255, 0.5)');  // 软边缘
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      // 剔除
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, 32, 32);
             const circleTexture = new THREE.CanvasTexture(circleCanvas);
 
             const mat = new THREE.PointsMaterial({
-                size: IS_MOBILE ? 0.15 : 0.1, // 提升粒子尺寸，增加体感亮度
+                size: IS_MOBILE ? 0.22 : 0.16, // 进一步大幅提升尺寸，产生更明显的发光感
                 map: circleTexture,
                 alphaTest: 0.05, // 软剔除，保留球体柔和光晕
                 vertexColors: true,
