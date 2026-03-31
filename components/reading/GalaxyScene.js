@@ -93,21 +93,21 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 1.8, 
-                ease: 'expo.out',
+                duration: 1.5, // 极速解体，视觉冲击加倍
+                ease: 'power3.inOut',
                 overwrite: 'auto',
                 onComplete: () => {
                     console.log('>>> [ACTION] Flight Component: LANDED.');
                     if (onExited) onExited();
                 }
             });
-            // 离场时粒子逐渐消失，防止生硬的组件切换感
+            // 粒子淡出与解体同步，产生一种“化为星尘”落入地图的质感
             if (sceneRef.current) {
                 gsap.to(sceneRef.current.points.material, {
                     opacity: 0,
+                    size: 0.1, // 变小变亮
                     duration: 1.5,
-                    delay: 0.3,
-                    ease: 'power2.in'
+                    ease: 'power3.inOut'
                 });
             }
             if (cameraRef.current) {
@@ -228,29 +228,12 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                     allPositions[startIdx + j + 1] = allStart[startIdx + j + 1];
                     allPositions[startIdx + j + 2] = allStart[startIdx + j + 2];
 
-                    // 离场飞向地球边缘的终点映射 (回归极简：书籍作为一个整体切片按切线方向贴合地球模型表面)
-                    // 1. 获取该经纬度下的法向量
-                    const nx = Math.sin(basePhi) * Math.cos(baseTheta);
-                    const ny = Math.cos(basePhi);
-                    const nz = Math.sin(basePhi) * Math.sin(baseTheta);
-
-                    // 2. 构造两个正交切向量 (Tangent, Bitangent) 以确定平面朝向
-                    const tangentX = -Math.sin(baseTheta);
-                    const tangentZ = Math.cos(baseTheta);
-                    
-                    const bitangentX = -Math.cos(basePhi) * Math.cos(baseTheta);
-                    const bitangentY = Math.sin(basePhi);
-                    const bitangentZ = -Math.cos(basePhi) * Math.sin(baseTheta);
-
-                    // 3. 将 PX/PY 映射到切平面上（不再发生球面弯曲，保持书籍本身的锐利感）
-                    const rFinal = globeR + pz; 
-                    const baseX = -rFinal * nx; // X 带负号以对齐 GlobeScene
-                    const baseY = rFinal * ny;
-                    const baseZ = rFinal * nz;
-
-                    allGlobe[startIdx + j]     = baseX + px * (-tangentX) + py * bitangentX;
-                    allGlobe[startIdx + j + 1] = baseY + py * bitangentY;
-                    allGlobe[startIdx + j + 2] = baseZ + px * (-tangentZ) + py * bitangentZ;
+                    // 离场飞向地球边缘的终点映射 (书页解体化为星尘，带螺旋涡流感)
+                    // 使用球坐标系直接定义散点：这样在过渡时每一个点都会像星光一样飞向自己的坑位
+                    const rFinal = globeR + pz * 0.2; // 压扁 Z 轴厚度
+                    allGlobe[startIdx + j]     = -rFinal * Math.sin(basePhi) * Math.cos(baseTheta);
+                    allGlobe[startIdx + j + 1] = rFinal * Math.cos(basePhi);
+                    allGlobe[startIdx + j + 2] = rFinal * Math.sin(basePhi) * Math.sin(baseTheta);
 
                     allColors[startIdx + j]     = particleColors[j];
                     allColors[startIdx + j + 1] = particleColors[j + 1];
