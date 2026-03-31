@@ -135,7 +135,7 @@ export default function ReadingOdysseyPage() {
                 <>
                     {/* 3D 场景：粒子墙 or 地球 */}
                     {books.length > 0 ? (
-                        <div className={styles.sceneWrapper} style={{ opacity: transitioningTo ? 0 : 1 }}>
+                        <div className={styles.sceneWrapper} style={{ opacity: transitioningTo === 'galaxy' ? 0 : 1 }}>
                             {viewMode === 'globe' ? (
                                 <GlobeScene 
                                     books={books} 
