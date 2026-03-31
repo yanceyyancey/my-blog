@@ -74,10 +74,13 @@ export default function ReadingOdysseyPage() {
 
     // ---- 点击粒子书 ----
     const handleBookClick = useCallback((book) => {
-        if (!book || transitioningTo) return;
-        setAutoFlyTarget(book);
-        setTransitioningTo('globe'); 
-    }, [transitioningTo]);
+        if (viewMode === 'galaxy') {
+            setAutoFlyTarget(book);
+            setTransitioningTo('globe'); // 也要触发书墙飞入球体的动画
+        } else {
+            setSelectedBook(book);
+        }
+    }, [viewMode]);
 
     // ---- 金句保存后更新本地状态 ----
     const handleQuoteSaved = useCallback((updatedBook) => {
@@ -131,7 +134,7 @@ export default function ReadingOdysseyPage() {
                 <>
                     {/* 3D 场景：粒子墙 or 地球 */}
                     {books.length > 0 ? (
-                        <div className={styles.sceneWrapper} style={{ opacity: transitioningTo === 'galaxy' ? 0 : 1 }}>
+                        <div className={styles.sceneWrapper} style={{ opacity: transitioningTo ? 0 : 1 }}>
                             {viewMode === 'globe' ? (
                                 <GlobeScene 
                                     books={books} 
@@ -176,11 +179,7 @@ export default function ReadingOdysseyPage() {
                                     onClick={() => {
                                         if (viewMode === 'galaxy' || transitioningTo) return;
                                         setAutoFlyTarget(null);
-                                        setTransitioningTo('galaxy');
-                                        setTimeout(() => {
-                                            setViewMode('galaxy');
-                                            setTransitioningTo(null);
-                                        }, 300); // 预留一小点淡入时间
+                                        setViewMode('galaxy');
                                     }}
                                     title="粒子书墙"
                                 >

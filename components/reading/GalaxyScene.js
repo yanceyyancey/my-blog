@@ -92,23 +92,24 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
         if (isExitingToGlobe) {
             console.log('>>> [ACTION] Starting Clean Rigid Flight...');
             gsap.killTweensOf(introRef.current);
-                gsap.to(introRef.current, {
-                    progress: 2, 
-                    duration: 1.2, 
-                    ease: 'power3.inOut',
-                    overwrite: 'auto',
-                    onComplete: () => {
-                        if (onExited) onExited();
-                    }
-                });
-                if (sceneRef.current) {
-                    gsap.to(sceneRef.current.points.material, {
-                        opacity: 0,
-                        size: 0.1, 
-                        duration: 1.2,
-                        ease: 'power3.inOut'
-                    });
+            gsap.to(introRef.current, {
+                progress: 2, 
+                duration: 0.8, // 极致快感：0.8s
+                ease: 'power3.out',
+                overwrite: 'auto',
+                onComplete: () => {
+                    if (onExited) onExited();
                 }
+            });
+            // 离场阶段不再进行粒子消散，而是整体飞过去后自然消失
+            if (sceneRef.current) {
+                gsap.to(sceneRef.current.points.material, {
+                    opacity: 0,
+                    size: 0.12, 
+                    duration: 0.8,
+                    ease: 'power3.out'
+                });
+            }
             if (cameraRef.current) {
                 gsap.to(cameraRef.current.position, {
                     z: 14, 
@@ -260,14 +261,13 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 alphaTest: 0.05, // 软剔除，保留球体柔和光晕
                 vertexColors: true,
                 transparent: true,
-                opacity: 0.7, // 降低基础透明度，避免重叠爆白
+                opacity: 0.95,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
                 sizeAttenuation: true,
             });
 
             const points = new THREE.Points(geo, mat);
-            points.frustumCulled = false; // 散落范围极大，禁用视锥体裁剪防止缩放时突然消失
             scene.add(points);
 
             // 入场动画全局进度控制器
