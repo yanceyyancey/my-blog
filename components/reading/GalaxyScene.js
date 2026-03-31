@@ -86,27 +86,26 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
     const [loaded, setLoaded] = useState(false);
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
     const introRef = useRef({ progress: 0 });
-    const cameraRef = useRef(null);
     useEffect(() => {
         if (isExitingToGlobe) {
-            console.log('>>> [ACTION] Starting Fluid Geographic Convergence...');
+            console.log('>>> [ACTION] Starting Clean Rigid Flight...');
             gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 2.5, // 顺滑、优雅的慢镜头过渡
-                ease: 'power2.inOut',
+                duration: 2.2, // 稳重、顺滑的 2.2s
+                ease: 'power3.inOut',
                 overwrite: 'auto',
                 onComplete: () => {
                     if (onExited) onExited();
                 }
             });
-            // 粒子随弧线飞入时逐渐变细微
+            // 离场阶段不再进行粒子消散，而是整体飞过去后自然消失
             if (sceneRef.current) {
                 gsap.to(sceneRef.current.points.material, {
                     opacity: 0,
-                    size: 0.1, 
-                    duration: 2.5,
-                    ease: 'power2.inOut'
+                    size: 0.15, // 仅轻微缩小，保持书的形态
+                    duration: 2.2,
+                    ease: 'power3.inOut'
                 });
             }
             if (cameraRef.current) {
@@ -301,17 +300,16 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                             by = allStart[idx + 1] + (allOrig[idx + 1] - allStart[idx + 1]) * p;
                             bz = allStart[idx + 2] + (allOrig[idx + 2] - allStart[idx + 2]) * p;
                         } else {
-                            // Stage 2: 从阵列 -> 弧线跃迁至地球目标点
+                            // Stage 2: 极致顺滑的刚性飞越 (每一本书作为一个整体矩形，优雅划过抛物线)
                             const p2 = p - 1; 
                             const startX = allOrig[idx], startY = allOrig[idx + 1], startZ = allOrig[idx + 2];
                             const endX = allGlobe[idx], endY = allGlobe[idx + 1], endZ = allGlobe[idx + 2];
 
-                            // 引入“弧线跃迁”：在路径中段向上/外弹出 (i%5 使其乱中有序)
-                            const arch = Math.sin(p2 * Math.PI) * (4.0 + (i % 7) * 1.2);
+                            // 抛物线弧度（统一弧度，不加随机散乱感，保证阅读感流畅）
+                            const arch = Math.sin(p2 * Math.PI) * 4.5;
                             
-                            // 线性插值 + 弧向偏移
-                            bx = startX + (endX - startX) * p2 + (Math.cos(i) * arch * (1 - p2));
-                            by = startY + (endY - startY) * p2 + (Math.sin(i) * arch * (1 - p2));
+                            bx = startX + (endX - startX) * p2;
+                            by = startY + (endY - startY) * p2;
                             bz = startZ + (endZ - startZ) * p2 + arch; 
                         }
 
