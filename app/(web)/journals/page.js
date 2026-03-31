@@ -25,7 +25,7 @@ export default async function Journals() {
                         <div className="empty-state" style={{ textAlign: 'center', padding: '4rem 1rem', background: 'var(--bg-secondary)', borderRadius: '1rem', border: '1px solid var(--border)' }}>
                             <svg style={{ margin: '0 auto 1rem text-muted', width: '48px', height: '48px', opacity: 0.5 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                             <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>还没有发布任何说说</h3>
-                            <p style={{ color: 'var(--text-muted)' }}>请在 Notion 中添加 Category 标为 "Journal" 的短文</p>
+                            <p style={{ color: 'var(--text-muted)' }}>请在 Notion 中添加 Category 标为 &quot;Journal&quot; 的短文</p>
                         </div>
                     ) : (
                         journalsData.map(({ slug, date, contentHtml, author, tags }) => {

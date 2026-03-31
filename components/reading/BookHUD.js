@@ -132,7 +132,7 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete 
                         </>
                     ) : book.quote ? (
                         <p className={styles.quoteText} onClick={handleEditClick} title="点击编辑">
-                            "{book.quote}"
+                            &quot;{book.quote}&quot;
                         </p>
                     ) : (
                         <p className={styles.quotePlaceholder} onClick={handleEditClick}>

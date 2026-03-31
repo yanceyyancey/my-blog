@@ -14,49 +14,52 @@ export default function SearchModal({ isOpen, onClose }) {
 
     // Fetch post data when modal is open
     useEffect(() => {
-        if (isOpen) {
-            // Auto focus input
-            setTimeout(() => {
-                if (inputRef.current) inputRef.current.focus();
-            }, 100);
+        const handleOpen = async () => {
+            if (isOpen) {
+                setTimeout(() => {
+                    if (inputRef.current) inputRef.current.focus();
+                }, 100);
 
-            if (posts.length === 0) {
-                setLoading(true);
-                fetch('/api/search')
-                    .then(res => res.json())
-                    .then(data => {
+                if (posts.length === 0) {
+                    setLoading(true);
+                    try {
+                        const res = await fetch('/api/search');
+                        const data = await res.json();
                         setPosts(data);
-                        setLoading(false);
-                    })
-                    .catch(e => {
+                    } catch (e) {
                         console.error('Failed to load search data:', e);
+                    } finally {
                         setLoading(false);
-                    });
+                    }
+                }
+            } else {
+                setQuery('');
+                setResults([]);
             }
-        } else {
-            setQuery('');
-            setResults([]);
-        }
+        };
+        handleOpen();
     }, [isOpen, posts.length]);
 
     // Handle search filtering
     useEffect(() => {
-        if (!query.trim()) {
-            setResults([]);
-            return;
-        }
+        const runFilter = () => {
+            if (!query.trim()) {
+                setResults([]);
+                return;
+            }
 
-        const lowerQuery = query.toLowerCase();
-        const filtered = posts.filter(post =>
-            (post.title && post.title.toLowerCase().includes(lowerQuery)) ||
-            (post.description && post.description.toLowerCase().includes(lowerQuery)) ||
-            (post.category && post.category.toLowerCase().includes(lowerQuery)) ||
-            (post.tags && post.tags.some(tag => tag.toLowerCase().includes(lowerQuery)))
-        );
+            const lowerQuery = query.toLowerCase();
+            const filtered = posts.filter(post =>
+                (post.title && post.title.toLowerCase().includes(lowerQuery)) ||
+                (post.description && post.description.toLowerCase().includes(lowerQuery)) ||
+                (post.category && post.category.toLowerCase().includes(lowerQuery)) ||
+                (post.tags && post.tags.some(tag => tag.toLowerCase().includes(lowerQuery)))
+            );
 
-        setResults(filtered.slice(0, 8)); // Limit to top 8 results
+            setResults(filtered.slice(0, 8)); // Limit to top 8 results
+        };
+        runFilter();
     }, [query, posts]);
-
     // Close on escape key
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -125,7 +128,7 @@ export default function SearchModal({ isOpen, onClose }) {
                     {loading && <div className="search-loading">正在加载数据... (这可能需要几秒钟)</div>}
 
                     {!loading && query.trim() !== '' && results.length === 0 && (
-                        <div className="search-empty">没有找到与 "{query}" 相关的文章</div>
+                        <div className="search-empty">没有找到与 &quot;{query}&quot; 相关的文章</div>
                     )}
 
                     {!loading && results.length > 0 && (
