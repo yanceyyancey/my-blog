@@ -94,8 +94,8 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 1.2, // 稍微拉长时间，让离场飞越更有沉稳感
-                ease: 'power3.inOut',
+                duration: 0.8, // 极致快感：0.8s
+                ease: 'power3.out',
                 overwrite: 'auto',
                 onComplete: () => {
                     if (onExited) onExited();
@@ -105,9 +105,9 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             if (sceneRef.current) {
                 gsap.to(sceneRef.current.points.material, {
                     opacity: 0,
-                    size: 0.1, 
-                    duration: 1.2,
-                    ease: 'power3.inOut'
+                    size: 0.12, 
+                    duration: 0.8,
+                    ease: 'power3.out'
                 });
             }
             if (cameraRef.current) {
@@ -261,7 +261,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 alphaTest: 0.05, // 软剔除，保留球体柔和光晕
                 vertexColors: true,
                 transparent: true,
-                opacity: 0.7, // 降低基础透明度，解决 AdditiveBlending 重叠时异常爆白的问题
+                opacity: 0.95,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
                 sizeAttenuation: true,
