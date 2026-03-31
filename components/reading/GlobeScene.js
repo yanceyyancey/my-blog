@@ -54,7 +54,9 @@ function makeCoverTexture(books, colorHex) {
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = colorHex;
+    
+    // 背景统一为深色，不使用明显的国家主题色
+    ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, W, H);
 
     const validBooks = books.filter(b => b.coverUrl).slice(0, 9);
@@ -82,10 +84,8 @@ function makeCoverTexture(books, colorHex) {
                 const x = col * cellSizeW;
                 const y = row * cellSizeH;
 
-                // 绘制带有一点点边距的封面
-                const pad = cellSizeW * 0.05;
-                const dw = cellSizeW - pad * 2, dh = cellSizeH - pad * 2;
-                const targetRatio = dw / dh, srcRatio = img.naturalWidth / img.naturalHeight;
+                // 移除边距 (padding)，使书籍无缝拼接
+                const targetRatio = cellSizeW / cellSizeH, srcRatio = img.naturalWidth / img.naturalHeight;
                 
                 let sw, sh, sx = 0, sy = 0;
                 if (srcRatio > targetRatio) {
@@ -93,7 +93,7 @@ function makeCoverTexture(books, colorHex) {
                 } else {
                     sw = img.naturalWidth; sh = sw / targetRatio; sy = (img.naturalHeight - sh) / 2;
                 }
-                ctx.drawImage(img, sx, sy, sw, sh, x + pad, y + pad, dw, dh);
+                ctx.drawImage(img, sx, sy, sw, sh, x, y, cellSizeW, cellSizeH);
             });
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
