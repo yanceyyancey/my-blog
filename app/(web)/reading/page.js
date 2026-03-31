@@ -75,8 +75,8 @@ export default function ReadingOdysseyPage() {
     // ---- 点击粒子书 ----
     const handleBookClick = useCallback((book) => {
         if (viewMode === 'galaxy') {
-            setViewMode('globe');
             setAutoFlyTarget(book);
+            setTransitioningTo('globe'); // 也要触发书墙飞入球体的动画
         } else {
             setSelectedBook(book);
         }
