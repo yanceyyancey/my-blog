@@ -137,8 +137,8 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
         // 计算网格行列以及间距配置
         const cols = Math.ceil(Math.sqrt(books.length));
         const rows = Math.ceil(books.length / cols);
-        const SPACING_X = 3.2;
-        const SPACING_Y = 4.4;
+        const SPACING_X = 2.8; // 更紧凑的横向间距
+        const SPACING_Y = 3.8; // 更紧凑的纵向间距
 
         // 【充满屏幕的核心】：动态计算包围网格所需完美的 Z 轴距离
         const gridW = (cols - 1) * SPACING_X + 2.5; 
@@ -199,9 +199,9 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 const baseTheta = (lon + 180) * Math.PI / 180;
                 const globeR = 5.02;
 
-                const startCX = cx + (Math.random() - 0.5) * 160;
-                const startCY = cy + (Math.random() - 0.5) * 160;
-                const startCZ = (Math.random() - 0.5) * 100 + 100;
+                const startCX = cx + (Math.random() - 0.5) * 200;
+                const startCY = cy + (Math.random() - 0.5) * 200;
+                const startCZ = (Math.random() - 0.5) * 150 + 150; // 初始更有“深空感”
 
                 const colors = allCoverColors[i];
                 const { positions, particleColors } = generateBookParticles(0, 0, 0, colors);
@@ -256,7 +256,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             const circleTexture = new THREE.CanvasTexture(circleCanvas);
 
             const mat = new THREE.PointsMaterial({
-                size: IS_MOBILE ? 0.22 : 0.16, // 进一步大幅提升尺寸，产生更明显的发光感
+                size: IS_MOBILE ? 0.18 : 0.12, // 尺寸稍微调小，让细节更精致，不至于太肉
                 map: circleTexture,
                 alphaTest: 0.05, // 软剔除，保留球体柔和光晕
                 vertexColors: true,
@@ -274,8 +274,8 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             introRef.current.progress = 0;
             gsap.to(introRef.current, {
                 progress: 1,
-                duration: 2.4,
-                ease: 'power3.out',
+                duration: 3.2, // 总体时长拉长，更有史诗感
+                ease: 'expo.out', // 由快到慢的极致曲线
                 overwrite: 'auto'
             });
 
