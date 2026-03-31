@@ -605,7 +605,12 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             mouse.y =-((e.clientY - rc.top)  / rc.height) * 2 + 1;
             ray.setFromCamera(mouse, camera);
             const hits = ray.intersectObjects(interactableMeshes);
-            if (hits.length) activate(hits[0].object);
+            if (hits.length) {
+                activate(hits[0].object);
+            } else {
+                // 点击空白处：取消聚焦，开始优雅复位
+                onBookClick?.(null);
+            }
         };
 
         renderer.domElement.addEventListener('mousemove', onMouseMove);
@@ -641,16 +646,16 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         if (!s || !sceneReady) return;
 
         if (!isFocused && prevFocusedRef.current) {
-            // 1. 用户手动取消标记 (Close HUD) -> 缓慢拉远视角并恢复优雅自转
+            // 1. 手动取消聚焦 (点击背景或关闭卡片) -> 极度平滑的电影感回归
             s.controls.autoRotate = true;
-            gsap.to(s.controls, { autoRotateSpeed: 0.25, duration: 2.0, ease: 'power2.inOut' });
+            // 4秒极长渐进加速，营造“唤醒”世界的呼吸感
+            gsap.to(s.controls, { autoRotateSpeed: 0.25, duration: 4.0, ease: 'sine.inOut' });
             
-            // 可选：稍微拉远一点距离，回复概览感
             const currentPos = s.camera.position.clone();
-            const targetPos  = currentPos.clone().normalize().multiplyScalar(16.2);
+            const targetPos  = currentPos.clone().normalize().multiplyScalar(16.5);
             gsap.to(s.camera.position, {
                 x: targetPos.x, y: targetPos.y, z: targetPos.z,
-                duration: 1.5, ease: 'power2.inOut', overwrite: 'auto'
+                duration: 2.2, ease: 'expo.inOut', overwrite: 'auto'
             });
         }
         
