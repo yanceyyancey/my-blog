@@ -89,25 +89,24 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
     const cameraRef = useRef(null);
     useEffect(() => {
         if (isExitingToGlobe) {
-            console.log('>>> [ACTION] Starting Simplified Cinematic Flight...');
+            console.log('>>> [ACTION] Starting Fluid Geographic Convergence...');
             gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 1.5, // 极速解体，视觉冲击加倍
-                ease: 'power3.inOut',
+                duration: 2.5, // 顺滑、优雅的慢镜头过渡
+                ease: 'power2.inOut',
                 overwrite: 'auto',
                 onComplete: () => {
-                    console.log('>>> [ACTION] Flight Component: LANDED.');
                     if (onExited) onExited();
                 }
             });
-            // 粒子淡出与解体同步，产生一种“化为星尘”落入地图的质感
+            // 粒子随弧线飞入时逐渐变细微
             if (sceneRef.current) {
                 gsap.to(sceneRef.current.points.material, {
                     opacity: 0,
-                    size: 0.1, // 变小变亮
-                    duration: 1.5,
-                    ease: 'power3.inOut'
+                    size: 0.1, 
+                    duration: 2.5,
+                    ease: 'power2.inOut'
                 });
             }
             if (cameraRef.current) {
@@ -302,11 +301,18 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                             by = allStart[idx + 1] + (allOrig[idx + 1] - allStart[idx + 1]) * p;
                             bz = allStart[idx + 2] + (allOrig[idx + 2] - allStart[idx + 2]) * p;
                         } else {
-                            // Stage 2: 从阵列 -> 地球外围包裹网
-                            const p2 = p - 1; // 范围 0 到 1
-                            bx = allOrig[idx]     + (allGlobe[idx]     - allOrig[idx])     * p2;
-                            by = allOrig[idx + 1] + (allGlobe[idx + 1] - allOrig[idx + 1]) * p2;
-                            bz = allOrig[idx + 2] + (allGlobe[idx + 2] - allOrig[idx + 2]) * p2;
+                            // Stage 2: 从阵列 -> 弧线跃迁至地球目标点
+                            const p2 = p - 1; 
+                            const startX = allOrig[idx], startY = allOrig[idx + 1], startZ = allOrig[idx + 2];
+                            const endX = allGlobe[idx], endY = allGlobe[idx + 1], endZ = allGlobe[idx + 2];
+
+                            // 引入“弧线跃迁”：在路径中段向上/外弹出 (i%5 使其乱中有序)
+                            const arch = Math.sin(p2 * Math.PI) * (4.0 + (i % 7) * 1.2);
+                            
+                            // 线性插值 + 弧向偏移
+                            bx = startX + (endX - startX) * p2 + (Math.cos(i) * arch * (1 - p2));
+                            by = startY + (endY - startY) * p2 + (Math.sin(i) * arch * (1 - p2));
+                            bz = startZ + (endZ - startZ) * p2 + arch; 
                         }
 
                         // 整个书架极其轻微的全局移动，不破坏封面成型
