@@ -89,13 +89,13 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
     const cameraRef = useRef(null);
     useEffect(() => {
         if (isExitingToGlobe) {
-            console.log('>>> [ACTION] Starting Galaxy -> Globe Flight...');
+            console.log('>>> [ACTION] Starting Simplified Cinematic Flight...');
             // 杀掉可能还在运行的入场动画，强制启动离场动画
             gsap.killTweensOf(introRef.current);
             gsap.to(introRef.current, {
                 progress: 2, 
-                duration: 3.2,
-                ease: 'expo.inOut',
+                duration: 1.8, // 提速，增加冲击力
+                ease: 'expo.out',
                 overwrite: 'auto',
                 onComplete: () => {
                     console.log('>>> [ACTION] Flight Component: LANDED.');
@@ -105,8 +105,8 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             if (cameraRef.current) {
                 gsap.to(cameraRef.current.position, {
                     z: 14, 
-                    duration: 3.2,
-                    ease: 'expo.inOut',
+                    duration: 1.8,
+                    ease: 'expo.out',
                     overwrite: 'auto'
                 });
             }
@@ -220,19 +220,29 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                     allPositions[startIdx + j + 1] = allStart[startIdx + j + 1];
                     allPositions[startIdx + j + 2] = allStart[startIdx + j + 2];
 
-                    // 离场飞向地球边缘的终点映射 (完美球面贴纸算法：使得粒子阵列随经纬度自然弯曲，并紧贴地表)
-                    // 为了防止在极地产生的形变过度拉长，可以在此处用余弦缩放水平拉伸（这里直接采用投影使得高纬度有自然的映射拉拽感）
-                    const d_theta = px / globeR;
-                    const d_phi = py / globeR;
-                    
-                    const pPhi = basePhi - d_phi;
-                    const pTheta = baseTheta - d_theta;
+                    // 离场飞向地球边缘的终点映射 (回归极简：书籍作为一个整体切片按切线方向贴合地球模型表面)
+                    // 1. 获取该经纬度下的法向量
+                    const nx = Math.sin(basePhi) * Math.cos(baseTheta);
+                    const ny = Math.cos(basePhi);
+                    const nz = Math.sin(basePhi) * Math.sin(baseTheta);
 
-                    const rFinal = globeR + pz; // 若 pz = 0 则完全平铺
-                    // 严格复刻 GlobeScene.js 对应地球表面生成逻辑坐标（X 轴带负号）
-                    allGlobe[startIdx + j]     = -rFinal * Math.sin(pPhi) * Math.cos(pTheta);
-                    allGlobe[startIdx + j + 1] = rFinal * Math.cos(pPhi);
-                    allGlobe[startIdx + j + 2] = rFinal * Math.sin(pPhi) * Math.sin(pTheta);
+                    // 2. 构造两个正交切向量 (Tangent, Bitangent) 以确定平面朝向
+                    const tangentX = -Math.sin(baseTheta);
+                    const tangentZ = Math.cos(baseTheta);
+                    
+                    const bitangentX = -Math.cos(basePhi) * Math.cos(baseTheta);
+                    const bitangentY = Math.sin(basePhi);
+                    const bitangentZ = -Math.cos(basePhi) * Math.sin(baseTheta);
+
+                    // 3. 将 PX/PY 映射到切平面上（不再发生球面弯曲，保持书籍本身的锐利感）
+                    const rFinal = globeR + pz; 
+                    const baseX = -rFinal * nx; // X 带负号以对齐 GlobeScene
+                    const baseY = rFinal * ny;
+                    const baseZ = rFinal * nz;
+
+                    allGlobe[startIdx + j]     = baseX + px * (-tangentX) + py * bitangentX;
+                    allGlobe[startIdx + j + 1] = baseY + py * bitangentY;
+                    allGlobe[startIdx + j + 2] = baseZ + px * (-tangentZ) + py * bitangentZ;
 
                     allColors[startIdx + j]     = particleColors[j];
                     allColors[startIdx + j + 1] = particleColors[j + 1];
