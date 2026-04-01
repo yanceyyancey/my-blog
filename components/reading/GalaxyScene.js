@@ -88,6 +88,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
+    const defaultZ = useRef(0);
 
     useImperativeHandle(ref, () => ({
         triggerBookDissolve: (bookIdx, callback) => {
@@ -127,6 +128,34 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                     overwrite: 'auto'
                 });
             }
+        } else {
+            // 返回阶段：从地球状态飞回书墙
+            if (introRef.current.progress >= 2) {
+                console.log('>>> [ACTION] Returning to Wall Layout...');
+                gsap.killTweensOf(introRef.current);
+                gsap.to(introRef.current, {
+                    progress: 1,
+                    duration: 1,
+                    ease: 'expo.out',
+                    overwrite: 'auto'
+                });
+                if (sceneRef.current) {
+                    gsap.to(sceneRef.current.points.material, {
+                        opacity: 0.95,
+                        size: IS_MOBILE ? 0.18 : 0.12,
+                        duration: 0.8,
+                        ease: 'power3.out'
+                    });
+                }
+                if (cameraRef.current && defaultZ.current > 0) {
+                    gsap.to(cameraRef.current.position, {
+                        z: defaultZ.current,
+                        duration: 1,
+                        ease: 'expo.out',
+                        overwrite: 'auto'
+                    });
+                }
+            }
         }
     }, [isExitingToGlobe, onExited]);
 
@@ -159,12 +188,9 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         const requiredZ_W = (gridW / 2) / Math.tan(fovRad / 2) / aspect;
         
         // 放大 15% 留下边界呼吸空间
-        camera.position.set(0, 0, Math.max(requiredZ_H, requiredZ_W) * 1.15);
-        
-        // 适配性：如果是超窄屏（如移动端竖屏），进一步拉远相机
-        if (aspect < 0.8) {
-            camera.position.z *= 1.2;
-        }
+        const zPos = Math.max(requiredZ_H, requiredZ_W) * 1.15;
+        defaultZ.current = aspect < 0.8 ? zPos * 1.2 : zPos;
+        camera.position.set(0, 0, defaultZ.current);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
