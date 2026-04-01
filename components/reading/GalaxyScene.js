@@ -385,36 +385,41 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                 geo.attributes.position.needsUpdate = true;
             };
 
-            // ---- 点击射线检测 ----
+            // ---- 点击检测（数学网格投影法，100% 准确率） ----
             const raycaster = new THREE.Raycaster();
-            raycaster.params.Points.threshold = 0.3;
             const pointer = new THREE.Vector2();
+            const planeZ0 = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // 书墙所在的 Z=0 平面
+            const intersectionPoint = new THREE.Vector3();
 
             const onClick = (e) => {
                 const rect = canvas.getBoundingClientRect();
                 pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
                 pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                
                 raycaster.setFromCamera(pointer, camera);
-                const intersects = raycaster.intersectObject(points);
-                if (intersects.length > 0) {
-                    const particleIdx = intersects[0].index;
-                    // 找到是哪本书
-                    let bookIdx = 0;
-                    for (let i = 0; i < bookStartIndices.current.length; i++) {
-                        const start = bookStartIndices.current[i];
-                        const end = start + PARTICLE_COUNT;
-                        if (particleIdx >= start && particleIdx < end) {
-                            bookIdx = i;
-                            break;
+                // 找到射线与 Z=0 平面的交点
+                if (raycaster.ray.intersectPlane(planeZ0, intersectionPoint)) {
+                    const worldX = intersectionPoint.x;
+                    const worldY = intersectionPoint.y;
+
+                    // 反向推算行列 (Invert grid math)
+                    const col = Math.round(worldX / SPACING_X + (cols - 1) / 2);
+                    const row = Math.round(-worldY / SPACING_Y + (rows - 1) / 2);
+
+                    // 边界检查
+                    if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                        const bookIdx = row * cols + col;
+                        if (bookIdx >= 0 && bookIdx < books.length) {
+                            console.log('>>> [CLICK] Book Found at:', col, row, 'Index:', bookIdx);
+                            // 记录正在解体的索引，防止 breathe 重置
+                            dissolvingBookIdxRef.current = bookIdx;
+                            // 解体动画
+                            triggerDissolve(geo, bookStartIndices.current[bookIdx], () => {
+                                dissolvingBookIdxRef.current = null;
+                                if (onBookClickRef.current) onBookClickRef.current(books[bookIdx]);
+                            });
                         }
                     }
-                    // 记录正在解体的索引，防止 breathe 重置
-                    dissolvingBookIdxRef.current = bookIdx;
-                    // 解体动画
-                    triggerDissolve(geo, bookStartIndices.current[bookIdx], () => {
-                        dissolvingBookIdxRef.current = null;
-                        if (onBookClickRef.current) onBookClickRef.current(books[bookIdx]);
-                    });
                 }
             };
 
