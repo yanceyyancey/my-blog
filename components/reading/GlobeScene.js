@@ -161,7 +161,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
     const [sceneReady, setSceneReady] = useState(false);
     const [meshesReady, setMeshesReady] = useState(false);
     const prevFocusedRef = useRef(isFocused);
-    const autoFlyCompleteRef = useRef(false);
+    const lastHandledTargetIdRef = useRef(null);
     const onBookClickRef = useRef(onBookClick);
     useEffect(() => { onBookClickRef.current = onBookClick; }, [onBookClick]);
 
@@ -321,17 +321,28 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
     useEffect(() => {
         const s = stateRef.current;
-        if (sceneReady && meshesReady && autoFlyTarget && s && !autoFlyCompleteRef.current) {
+        const targetId = autoFlyTarget?.id;
+
+        // 仅在可见时触发自动化飞行，且确保同一个目标不重复触发
+        if (visible && sceneReady && meshesReady && autoFlyTarget && s && lastHandledTargetIdRef.current !== targetId) {
             const m = s.interactableMeshes.find(x => 
                 x.userData?.code === autoFlyTarget.countryCode || 
                 x.userData?.country === autoFlyTarget.country
             );
             if (m) {
-                autoFlyCompleteRef.current = true;
-                setTimeout(() => { if(s.anim) s.runAnim(m.userData.lat, m.userData.lon, 8.2, 'fly', () => onBookClickRef.current?.(autoFlyTarget)); }, 300);
+                lastHandledTargetIdRef.current = targetId;
+                // 略微延迟以等待 CSS 过渡完成
+                setTimeout(() => { 
+                    if(s.anim) s.runAnim(m.userData.lat, m.userData.lon, 8.2, 'fly', () => onBookClickRef.current?.(autoFlyTarget)); 
+                }, 100);
             }
         }
-    }, [sceneReady, meshesReady, autoFlyTarget]);
+        
+        // 如果目标清空，重置记录以便下次可以再次触发同一本书
+        if (!autoFlyTarget) {
+            lastHandledTargetIdRef.current = null;
+        }
+    }, [visible, sceneReady, meshesReady, autoFlyTarget]);
 
     useEffect(() => { const cleanup = init(); return cleanup; }, [init]);
 
