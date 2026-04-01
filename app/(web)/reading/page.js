@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import styles from '@/components/reading/reading.module.css';
@@ -41,6 +41,7 @@ export default function ReadingOdysseyPage() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [searchText, setSearchText] = useState('');
     const [autoFlyTarget, setAutoFlyTarget] = useState(null);
+    const galaxyRef = useRef(null);
 
     // ---- 登录成功 ----
     const handleLogin = useCallback(async (userData) => {
@@ -103,13 +104,32 @@ export default function ReadingOdysseyPage() {
         if (e.key !== 'Enter') return;
         const q = searchText.toLowerCase().trim();
         if (!q) return;
-        const found = books.find(b =>
+        
+        const foundIdx = books.findIndex(b =>
             b.title?.toLowerCase().includes(q) ||
             b.author?.toLowerCase().includes(q)
         );
-        if (found) setSelectedBook(found);
-        else alert(`未在星图中找到关于"${q}"的书籍`);
-    }, [searchText, books]);
+        
+        if (foundIdx !== -1) {
+            const found = books[foundIdx];
+            if (viewMode === 'galaxy') {
+                // 书墙模式：先解体，再飞入
+                if (galaxyRef.current) {
+                    galaxyRef.current.triggerBookDissolve(foundIdx, () => {
+                        handleBookClick(found);
+                    });
+                } else {
+                    handleBookClick(found);
+                }
+            } else {
+                // 地球模式：直接飞行
+                setAutoFlyTarget(found);
+                setSelectedBook(found);
+            }
+        } else {
+            alert(`未在星图中找到关于"${q}"的书籍`);
+        }
+    }, [searchText, books, viewMode, handleBookClick]);
 
     // 统计数据
     const uniqueCountries = new Set(books.map(b => b.country).filter(Boolean)).size;
@@ -147,6 +167,7 @@ export default function ReadingOdysseyPage() {
                                 />
                             ) : (
                                 <GalaxyScene 
+                                    ref={galaxyRef}
                                     books={books} 
                                     onBookClick={handleBookClick} 
                                     isExitingToGlobe={transitioningTo === 'globe'}

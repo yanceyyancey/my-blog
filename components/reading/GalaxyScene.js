@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { gsap } from 'gsap';
@@ -81,13 +81,22 @@ function generateBookParticles(centerX, centerY, centerZ, colors) {
 // ==========================================
 // 主组件：粒子书籍墙
 // ==========================================
-export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingToGlobe, onExited }) {
+const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlobe, onExited }, ref) => {
     const canvasRef = useRef(null);
     const sceneRef = useRef(null);
     const [loaded, setLoaded] = useState(false);
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
+
+    useImperativeHandle(ref, () => ({
+        triggerBookDissolve: (bookIdx, callback) => {
+            const s = sceneRef.current;
+            if (!s || !bookStartIndices.current[bookIdx]) return;
+            const startIdx = bookStartIndices.current[bookIdx];
+            s.triggerDissolve(s.geo, startIdx, callback);
+        }
+    }));
     useEffect(() => {
         if (isExitingToGlobe) {
             console.log('>>> [ACTION] Starting Clean Rigid Flight...');
@@ -390,7 +399,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 });
             };
 
-            sceneRef.current = { scene, camera, renderer, controls, points, geo, breathe };
+            sceneRef.current = { scene, camera, renderer, controls, points, geo, breathe, triggerDissolve };
             setLoaded(true);
 
             let animId;
@@ -434,4 +443,6 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             )}
         </>
     );
-}
+});
+
+export default GalaxyScene;
