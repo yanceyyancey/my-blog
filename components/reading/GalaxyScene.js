@@ -156,19 +156,14 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                     ease: 'power3.out'
                 });
             }
-            if (cameraRef.current && defaultZ.current > 0) {
-                gsap.to(cameraRef.current.position, {
-                    z: defaultZ.current,
-                    duration: 1,
-                    ease: 'expo.out',
-                    overwrite: 'auto'
-                });
+            // 关键修复：从地球返回书墙时，必须重新启用 OrbitControls 交互
+            if (sceneRef.current && sceneRef.current.controls) {
+                sceneRef.current.controls.enabled = true;
             }
         }
         prevIsExitingRef.current = isExitingToGlobe;
-        if (isExitingToGlobe) {
-            dissolvingBookIdxRef.current = null; // 确保在全屏飞入开始时没有解体锁定
-        }
+        // 核心：状态切换时强制清除动效锁，找回书墙的 3D 呼吸感
+        dissolvingBookIdxRef.current = null; 
     }, [isExitingToGlobe, onExited]);
 
     // 冗余保障：当 visible 变为 true 时，如果进度还停留在地球状态，自动拉回书墙模式
@@ -176,8 +171,12 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         if (visible && introRef.current.progress >= 2 && !isExitingToGlobe) {
             console.log('>>> [AUTO-FIX] Restoring Wall Layout on Visibility...');
             gsap.to(introRef.current, { progress: 1, duration: 1.2, ease: 'expo.inOut', overwrite: 'auto' });
-            if (sceneRef.current) gsap.to(sceneRef.current.points.material, { opacity: 0.95, size: IS_MOBILE ? 0.18 : 0.12, duration: 0.8 });
+            if (sceneRef.current) {
+               gsap.to(sceneRef.current.points.material, { opacity: 0.95, size: IS_MOBILE ? 0.18 : 0.12, duration: 0.8 });
+               if (sceneRef.current.controls) sceneRef.current.controls.enabled = true;
+            }
             if (cameraRef.current && defaultZ.current > 0) gsap.to(cameraRef.current.position, { z: defaultZ.current, duration: 1, ease: 'expo.out' });
+            dissolvingBookIdxRef.current = null;
         }
     }, [visible, isExitingToGlobe]);
 
