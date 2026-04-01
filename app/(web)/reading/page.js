@@ -155,7 +155,7 @@ export default function ReadingOdysseyPage() {
                     {/* 3D 场景：粒子墙 与 地球 并行渲染以实现零加载切换 */}
                     {books.length > 0 ? (
                         <div className={styles.sceneWrapper}>
-                            <div className={viewMode === 'globe' ? styles.visibleScene : styles.hiddenScene}>
+                        <div className={(viewMode === 'globe' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
                                 <GlobeScene 
                                     books={books} 
                                     onBookClick={(b) => {
