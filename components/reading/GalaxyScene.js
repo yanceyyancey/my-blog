@@ -89,6 +89,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
     const defaultZ = useRef(0);
+    const prevIsExitingRef = useRef(isExitingToGlobe);
 
     useImperativeHandle(ref, () => ({
         triggerBookDissolve: (bookIdx, callback) => {
@@ -128,36 +129,45 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                     overwrite: 'auto'
                 });
             }
-        } else {
-            // 返回阶段：从地球状态飞回书墙
-            if (introRef.current.progress >= 2) {
-                console.log('>>> [ACTION] Returning to Wall Layout...');
-                gsap.killTweensOf(introRef.current);
-                gsap.to(introRef.current, {
-                    progress: 1,
+        } else if (prevIsExitingRef.current === true) {
+            // 这是从“地球模式”切换回“粒子书墙模式”的关键触发点
+            console.log('>>> [ACTION] Returning to Wall Layout...');
+            gsap.killTweensOf(introRef.current);
+            gsap.to(introRef.current, {
+                progress: 1,
+                duration: 1.2,
+                ease: 'expo.inOut',
+                overwrite: 'auto'
+            });
+            if (sceneRef.current) {
+                gsap.to(sceneRef.current.points.material, {
+                    opacity: 0.95,
+                    size: IS_MOBILE ? 0.18 : 0.12,
+                    duration: 0.8,
+                    ease: 'power3.out'
+                });
+            }
+            if (cameraRef.current && defaultZ.current > 0) {
+                gsap.to(cameraRef.current.position, {
+                    z: defaultZ.current,
                     duration: 1,
                     ease: 'expo.out',
                     overwrite: 'auto'
                 });
-                if (sceneRef.current) {
-                    gsap.to(sceneRef.current.points.material, {
-                        opacity: 0.95,
-                        size: IS_MOBILE ? 0.18 : 0.12,
-                        duration: 0.8,
-                        ease: 'power3.out'
-                    });
-                }
-                if (cameraRef.current && defaultZ.current > 0) {
-                    gsap.to(cameraRef.current.position, {
-                        z: defaultZ.current,
-                        duration: 1,
-                        ease: 'expo.out',
-                        overwrite: 'auto'
-                    });
-                }
             }
         }
+        prevIsExitingRef.current = isExitingToGlobe;
     }, [isExitingToGlobe, onExited]);
+
+    // 冗余保障：当 visible 变为 true 时，如果进度还停留在地球状态，自动拉回书墙模式
+    useEffect(() => {
+        if (visible && introRef.current.progress >= 2 && !isExitingToGlobe) {
+            console.log('>>> [AUTO-FIX] Restoring Wall Layout on Visibility...');
+            gsap.to(introRef.current, { progress: 1, duration: 1.2, ease: 'expo.inOut', overwrite: 'auto' });
+            if (sceneRef.current) gsap.to(sceneRef.current.points.material, { opacity: 0.95, size: IS_MOBILE ? 0.18 : 0.12, duration: 0.8 });
+            if (cameraRef.current && defaultZ.current > 0) gsap.to(cameraRef.current.position, { z: defaultZ.current, duration: 1, ease: 'expo.out' });
+        }
+    }, [visible, isExitingToGlobe]);
 
     useEffect(() => {
         if (!canvasRef.current || books.length === 0) return;
@@ -468,12 +478,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     return (
         <>
             <canvas ref={canvasRef} className={styles.canvas} />
-            {!loaded && books.length > 0 && !isExitingToGlobe && (
-                <div className={styles.loadingOverlay}>
-                    <div className={styles.loadingSpinner} />
-                    <span className={styles.loadingText}>渲染粒子宇宙...</span>
-                </div>
-            )}
+            {/* 已移除所有加载遮罩，实现静默快速启动 */}
         </>
     );
 });
