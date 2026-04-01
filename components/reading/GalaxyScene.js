@@ -89,16 +89,23 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
     const defaultZ = useRef(0);
-    const prevIsExitingRef = useRef(isExitingToGlobe);
     const visibleRef = useRef(visible);
+    const dissolvingBookIdxRef = useRef(null);
+    const onBookClickRef = useRef(onBookClick);
+
     useEffect(() => { visibleRef.current = visible; }, [visible]);
+    useEffect(() => { onBookClickRef.current = onBookClick; }, [onBookClick]);
 
     useImperativeHandle(ref, () => ({
         triggerBookDissolve: (bookIdx, callback) => {
             const s = sceneRef.current;
             if (!s || !bookStartIndices.current[bookIdx]) return;
+            dissolvingBookIdxRef.current = bookIdx; // 标记开始解体
             const startIdx = bookStartIndices.current[bookIdx];
-            s.triggerDissolve(s.geo, startIdx, callback);
+            s.triggerDissolve(s.geo, startIdx, () => {
+                dissolvingBookIdxRef.current = null; // 解体完成后重置，准备飞入
+                if (callback) callback();
+            });
         }
     }));
     useEffect(() => {
@@ -158,6 +165,9 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             }
         }
         prevIsExitingRef.current = isExitingToGlobe;
+        if (isExitingToGlobe) {
+            dissolvingBookIdxRef.current = null; // 确保在全屏飞入开始时没有解体锁定
+        }
     }, [isExitingToGlobe, onExited]);
 
     // 冗余保障：当 visible 变为 true 时，如果进度还停留在地球状态，自动拉回书墙模式
@@ -340,6 +350,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                 const p = introRef.current.progress;
                 
                 for (let i = 0; i < books.length; i++) {
+                    if (i === dissolvingBookIdxRef.current) continue; // 跳过正在执行解体动画的书籍，由 GSAP 接管
                     const start = bookStartIndices.current[i];
                     for (let j = 0; j < PARTICLE_COUNT; j++) {
                         const idx = (start + j) * 3;
@@ -396,9 +407,12 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                             break;
                         }
                     }
+                    // 记录正在解体的索引，防止 breathe 重置
+                    dissolvingBookIdxRef.current = bookIdx;
                     // 解体动画
                     triggerDissolve(geo, bookStartIndices.current[bookIdx], () => {
-                        onBookClick(books[bookIdx]);
+                        dissolvingBookIdxRef.current = null;
+                        if (onBookClickRef.current) onBookClickRef.current(books[bookIdx]);
                     });
                 }
             };
@@ -423,11 +437,13 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                     });
                 }
 
-                // 移除全局透明度淡出，保持星图背景可见，仅让选中的书籍执行粒子解体
-                gsap.to(mat, {
-                    duration: 1.2, ease: 'power3.in',
+                // 使用代理对象确保 GSAP 补间动画始终触发 onUpdate
+                gsap.to({ p: 0 }, {
+                    p: 1,
+                    duration: 1.2, 
+                    ease: 'power2.inOut',
                     onUpdate: function () {
-                        const p = this.progress();
+                        const p = this.progress(); 
                         for (let j = 0; j < PARTICLE_COUNT; j++) {
                             const idx = (startParticleIdx + j) * 3;
                             const o = tempObjs[j];
@@ -474,7 +490,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
 
         const cleanup = buildScene();
         return () => { cleanup.then(fn => fn && fn()); };
-    }, [books, onBookClick]);
+    }, [books]); // 移除 onBookClick，防止点击导致全场卸载重绘
 
     return (
         <>
