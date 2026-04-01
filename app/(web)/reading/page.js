@@ -152,10 +152,10 @@ export default function ReadingOdysseyPage() {
             {/* === 粒子星图场景 === */}
             {phase === 'galaxy' && (
                 <>
-                    {/* 3D 场景：粒子墙 or 地球 */}
+                    {/* 3D 场景：粒子墙 与 地球 并行渲染以实现零加载切换 */}
                     {books.length > 0 ? (
-                        <div className={styles.sceneWrapper} style={{ opacity: transitioningTo ? 0 : 1 }}>
-                            {viewMode === 'globe' ? (
+                        <div className={styles.sceneWrapper}>
+                            <div className={viewMode === 'globe' ? styles.visibleScene : styles.hiddenScene}>
                                 <GlobeScene 
                                     books={books} 
                                     onBookClick={(b) => {
@@ -164,8 +164,10 @@ export default function ReadingOdysseyPage() {
                                     }} 
                                     autoFlyTarget={autoFlyTarget} 
                                     isFocused={!!selectedBook}
+                                    visible={viewMode === 'globe'}
                                 />
-                            ) : (
+                            </div>
+                            <div className={(viewMode === 'galaxy' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
                                 <GalaxyScene 
                                     ref={galaxyRef}
                                     books={books} 
@@ -175,8 +177,9 @@ export default function ReadingOdysseyPage() {
                                         setViewMode('globe');
                                         setTransitioningTo(null);
                                     }}
+                                    visible={viewMode === 'galaxy' || transitioningTo === 'globe'}
                                 />
-                            )}
+                            </div>
                         </div>
                     ) : (
                         <div className={styles.loadingOverlay} style={{ background: '#050508' }}>

@@ -81,7 +81,7 @@ function generateBookParticles(centerX, centerY, centerZ, colors) {
 // ==========================================
 // 主组件：粒子书籍墙
 // ==========================================
-const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlobe, onExited }, ref) => {
+const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlobe, onExited, visible = true }, ref) => {
     const canvasRef = useRef(null);
     const sceneRef = useRef(null);
     const [loaded, setLoaded] = useState(false);
@@ -160,6 +160,11 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         
         // 放大 15% 留下边界呼吸空间
         camera.position.set(0, 0, Math.max(requiredZ_H, requiredZ_W) * 1.15);
+        
+        // 适配性：如果是超窄屏（如移动端竖屏），进一步拉远相机
+        if (aspect < 0.8) {
+            camera.position.z *= 1.2;
+        }
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
@@ -405,9 +410,11 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             let animId;
             const animate = () => {
                 animId = requestAnimationFrame(animate);
-                breathe();
-                controls.update();
-                renderer.render(scene, camera);
+                if (visible) {
+                    breathe();
+                    controls.update();
+                    renderer.render(scene, camera);
+                }
             };
             animate();
 
@@ -435,7 +442,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     return (
         <>
             <canvas ref={canvasRef} className={styles.canvas} />
-            {!loaded && books.length > 0 && (
+            {!loaded && books.length > 0 && !isExitingToGlobe && (
                 <div className={styles.loadingOverlay}>
                     <div className={styles.loadingSpinner} />
                     <span className={styles.loadingText}>渲染粒子宇宙...</span>

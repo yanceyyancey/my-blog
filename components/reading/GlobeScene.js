@@ -155,7 +155,7 @@ function buildCountryMeshes(geometry, cLat, cLon, texture) {
 
 const countryColor = c => ({ US:'#7c3aed', GB:'#06b6d4', CN:'#f59e0b', JP:'#ec4899', FR:'#10b981', DE:'#8b5cf6', CO:'#f97316', IN:'#ef4444', AF:'#84cc16', IL:'#0ea5e9', AT:'#a78bfa' }[c] || '#6366f1');
 
-export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocused }) {
+export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocused, visible = true }) {
     const mountRef = useRef(null);
     const stateRef = useRef(null);
     const [sceneReady, setSceneReady] = useState(false);
@@ -273,6 +273,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         let animId;
         const loop = () => {
             animId = requestAnimationFrame(loop);
+            if (!visible) return;
             if (anim.active) {
                 anim.frames++;
                 const t = ease3(anim.frames / anim.maxFrames);
