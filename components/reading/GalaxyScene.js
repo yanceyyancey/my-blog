@@ -90,6 +90,8 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const cameraRef = useRef(null);
     const defaultZ = useRef(0);
     const prevIsExitingRef = useRef(isExitingToGlobe);
+    const visibleRef = useRef(visible);
+    useEffect(() => { visibleRef.current = visible; }, [visible]);
 
     useImperativeHandle(ref, () => ({
         triggerBookDissolve: (bookIdx, callback) => {
@@ -421,7 +423,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                     });
                 }
 
-                gsap.to(mat, { opacity: 0, duration: 1, ease: 'power2.in' });
+                // 移除全局透明度淡出，保持星图背景可见，仅让选中的书籍执行粒子解体
                 gsap.to(mat, {
                     duration: 1.2, ease: 'power3.in',
                     onUpdate: function () {
@@ -445,7 +447,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             let animId;
             const animate = () => {
                 animId = requestAnimationFrame(animate);
-                if (visible) {
+                if (visibleRef.current) {
                     breathe();
                     controls.update();
                     renderer.render(scene, camera);

@@ -163,7 +163,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
     const prevFocusedRef = useRef(isFocused);
     const lastHandledTargetIdRef = useRef(null);
     const onBookClickRef = useRef(onBookClick);
-    useEffect(() => { onBookClickRef.current = onBookClick; }, [onBookClick]);
+    const visibleRef = useRef(visible);
+    useEffect(() => { visibleRef.current = visible; }, [visible]);
 
     const init = useCallback(() => {
         const container = mountRef.current;
@@ -273,7 +274,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         let animId;
         const loop = () => {
             animId = requestAnimationFrame(loop);
-            if (!visible) return;
+            if (!visibleRef.current) return;
             if (anim.active) {
                 anim.frames++;
                 const t = ease3(anim.frames / anim.maxFrames);
