@@ -89,6 +89,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
     const defaultZ = useRef(0);
+    const prevIsExitingRef = useRef(isExitingToGlobe);
     const visibleRef = useRef(visible);
     const dissolvingBookIdxRef = useRef(null);
     const onBookClickRef = useRef(onBookClick);
