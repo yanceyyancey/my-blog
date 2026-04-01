@@ -164,7 +164,7 @@ export default function ReadingOdysseyPage() {
                                     }} 
                                     autoFlyTarget={autoFlyTarget} 
                                     isFocused={!!selectedBook}
-                                    visible={viewMode === 'globe'}
+                                    visible={viewMode === 'globe' || transitioningTo === 'globe'}
                                 />
                             </div>
                             <div className={(viewMode === 'galaxy' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>

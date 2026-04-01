@@ -112,10 +112,9 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                     if (onExited) onExited();
                 }
             });
-            // 离场阶段不再进行粒子消散，而是整体飞过去后自然消失
+            // 离场阶段不再进行粒子透明度衰减，而是直接飞往球体位置，直到 CSS 层级进行场景切换
             if (sceneRef.current) {
                 gsap.to(sceneRef.current.points.material, {
-                    opacity: 0,
                     size: 0.12, 
                     duration: 0.8,
                     ease: 'power3.out'
