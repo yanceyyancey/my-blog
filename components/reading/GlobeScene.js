@@ -347,5 +347,5 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
     useEffect(() => { const cleanup = init(); return cleanup; }, [init]);
 
-    return <div ref={mountRef} style={{ position:'absolute', inset:0, background:'#000' }} />;
+    return <div ref={mountRef} style={{ position:'absolute', inset:0 }} />;
 }
