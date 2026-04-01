@@ -199,9 +199,9 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
                 const baseTheta = (lon + 180) * Math.PI / 180;
                 const globeR = 5.02;
 
-                const startCX = cx + (Math.random() - 0.5) * 200;
-                const startCY = cy + (Math.random() - 0.5) * 200;
-                const startCZ = (Math.random() - 0.5) * 150 + 150; // 初始更有“深空感”
+                const startCX = cx + (Math.random() - 0.5) * 300;
+                const startCY = cy + (Math.random() - 0.5) * 300;
+                const startCZ = (Math.random() - 0.5) * 400 + 350; // 极深初始位，增加史诗感
 
                 const colors = allCoverColors[i];
                 const { positions, particleColors } = generateBookParticles(0, 0, 0, colors);
@@ -240,6 +240,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             const geo = new THREE.BufferGeometry();
             geo.setAttribute('position', new THREE.BufferAttribute(allPositions, 3));
             geo.setAttribute('color', new THREE.BufferAttribute(allColors, 3));
+            geo.computeBoundingSphere(); // 初始化包围体，确保开始时不被错误剔除
 
             // 生成体积光感的小圆球贴图（Radial Gradient），替代扁平的点
             const circleCanvas = document.createElement('canvas');
@@ -268,6 +269,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             });
 
             const points = new THREE.Points(geo, mat);
+            points.frustumCulled = false; // 粒子位移频繁，直接禁用剔除以解决黑屏/消失问题
             scene.add(points);
 
             // 入场动画全局进度控制器
@@ -282,7 +284,7 @@ export default function GalaxyScene({ books, onBookClick, onAddBook, isExitingTo
             // 呼吸动画（随机微浮动与入场插值融合在一起，产生平滑集结动效！）
             let t = 0;
             const breathe = () => {
-                t += 0.012;
+                t += 0.008; // 减慢呼吸频率，更沉稳
                 const pos = geo.attributes.position.array;
                 const p = introRef.current.progress;
                 

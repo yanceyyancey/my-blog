@@ -189,7 +189,11 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
         const anim = { active: false, type: 'none', frames: 0, maxFrames: 60, qS: new THREE.Quaternion(), qE: new THREE.Quaternion(), rS: 16.5, rE: 8.2, onDone: null };
 
-        const globeMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 64, 64), new THREE.MeshPhongMaterial({ color: 0x000000, transparent: true, opacity: 0 }));
+        const globeMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(R, 64, 64), 
+            new THREE.MeshPhongMaterial({ color: 0x223344, transparent: true, opacity: 0, shininess: 10 })
+        );
+        globeMesh.frustumCulled = false;
         scene.add(globeMesh);
         new THREE.TextureLoader().load('https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg', tex => {
             tex.colorSpace = THREE.SRGBColorSpace;
@@ -216,6 +220,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                     const ms = buildCountryMeshes(geo, lat, lon, tex);
                     ms.forEach(m => {
                         m.userData = { code, lat, lon, books: bks.filter(b => b.coverUrl).slice(0, 9), meshGrid: grid };
+                        m.frustumCulled = false; // 增强交互稳定性
                         scene.add(m); interactableMeshes.push(m);
                         gsap.to(m.material.uniforms.uOpacity, { value: 1, duration: 0.8 });
                     });

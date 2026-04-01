@@ -6,21 +6,41 @@ import styles from './reading.module.css';
 
 // 星空粒子背景
 function initStarField(scene) {
-    const count = 2000;
+    const count = 3000; // 提升密度，更有深度感
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count * 3; i++) {
-        pos[i] = (Math.random() - 0.5) * 400;
+    const colors = new Float32Array(count * 3);
+    
+    for (let i = 0; i < count; i++) {
+        pos[i * 3]     = (Math.random() - 0.5) * 600;
+        pos[i * 3 + 1] = (Math.random() - 0.5) * 600;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * 600;
+        
+        // 加入星云色调：淡蓝、浅紫、纯白
+        const h = 0.6 + Math.random() * 0.15; // 0.6 - 0.75 (Blue/Purple range)
+        const s = 0.2 + Math.random() * 0.3;
+        const l = 0.6 + Math.random() * 0.3;
+        const color = new THREE.Color().setHSL(h, s, l);
+        colors[i * 3]     = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
     }
+    
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.computeBoundingSphere();
+
     const mat = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.3,
+        size: 0.25,
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.6,
         sizeAttenuation: true,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending, // 叠加感更通透
     });
-    return new THREE.Points(geo, mat);
+    const points = new THREE.Points(geo, mat);
+    points.frustumCulled = false; // 稳定性增强
+    return points;
 }
 
 export default function LoginScene({ onLogin }) {
@@ -50,10 +70,16 @@ export default function LoginScene({ onLogin }) {
         scene.add(stars);
 
         let animId;
+        let t = 0;
         const animate = () => {
             animId = requestAnimationFrame(animate);
-            stars.rotation.y += 0.0001;
-            stars.rotation.x += 0.00005;
+            t += 0.005;
+            stars.rotation.y += 0.00015;
+            stars.rotation.x += 0.00008;
+            
+            // 呼吸感：微妙的微颤与亮度起伏
+            stars.material.opacity = 0.5 + Math.sin(t) * 0.12;
+            
             renderer.render(scene, camera);
         };
         animate();
