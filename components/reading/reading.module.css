@@ -1104,3 +1104,36 @@
     }
 }
 
+
+/* =============================================
+   空宇宙状态 / 引导层
+   ============================================= */
+.emptyOverlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    pointer-events: none; /* 穿透到层下的 3D 场景 */
+}
+
+.emptyText {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 0.95rem;
+    text-align: center;
+    line-height: 1.8;
+    pointer-events: auto;
+}
+
+.addFirstBtn {
+    color: #a78bfa;
+    cursor: pointer;
+    font-weight: 600;
+    transition: color 0.2s, text-shadow 0.2s;
+}
+
+.addFirstBtn:hover {
+    color: #c4b5fd;
+    text-shadow: 0 0 10px rgba(167, 139, 250, 0.4);
+}

@@ -93,9 +93,11 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const visibleRef = useRef(visible);
     const dissolvingBookIdxRef = useRef(null);
     const onBookClickRef = useRef(onBookClick);
+    const onExitedRef = useRef(onExited);
 
     useEffect(() => { visibleRef.current = visible; }, [visible]);
     useEffect(() => { onBookClickRef.current = onBookClick; }, [onBookClick]);
+    useEffect(() => { onExitedRef.current = onExited; }, [onExited]);
 
     useImperativeHandle(ref, () => ({
         triggerBookDissolve: (bookIdx, callback) => {
@@ -119,11 +121,11 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                 ease: 'power3.out',
                 overwrite: 'auto',
                 onComplete: () => {
-                    if (onExited) onExited();
+                    if (onExitedRef.current) onExitedRef.current();
                 }
             });
-            // 离场阶段不再进行粒子透明度衰减，而是直接飞往球体位置，直到 CSS 层级进行场景切换
-            if (sceneRef.current) {
+            // 离场阶段：如果有点阵书墙，进行尺寸平滑过渡
+            if (sceneRef.current?.points?.material) {
                 gsap.to(sceneRef.current.points.material, {
                     size: 0.12, 
                     duration: 0.8,
@@ -148,7 +150,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                 ease: 'expo.inOut',
                 overwrite: 'auto'
             });
-            if (sceneRef.current) {
+            if (sceneRef.current?.points?.material) {
                 gsap.to(sceneRef.current.points.material, {
                     opacity: 0.95,
                     size: IS_MOBILE ? 0.18 : 0.12,
@@ -164,7 +166,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         prevIsExitingRef.current = isExitingToGlobe;
         // 核心：状态切换时强制清除动效锁，找回书墙的 3D 呼吸感
         dissolvingBookIdxRef.current = null; 
-    }, [isExitingToGlobe, onExited]);
+    }, [isExitingToGlobe]); // Removed onExited from dependencies
 
     // 冗余保障：当 visible 变为 true 时，如果进度还停留在地球状态，自动拉回书墙模式
     useEffect(() => {
@@ -199,9 +201,27 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         const planeZ0 = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
         const intersectionPoint = new THREE.Vector3();
 
-        // 存储引擎实例
+        // 1. 初始化背景星空（保证空宇宙也不死黑）
+        const starCount = 2000;
+        const starGeo = new THREE.BufferGeometry();
+        const starPos = new Float32Array(starCount * 3);
+        for (let i = 0; i < starCount; i++) {
+            starPos[i * 3] = (Math.random() - 0.5) * 800;
+            starPos[i * 3 + 1] = (Math.random() - 0.5) * 800;
+            starPos[i * 3 + 2] = (Math.random() - 0.5) * 600 - 200;
+        }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+        const starMat = new THREE.PointsMaterial({
+            size: 0.15, color: 0xffffff, transparent: true, opacity: 0.4, 
+            blending: THREE.AdditiveBlending, sizeAttenuation: true 
+        });
+        const backgroundStars = new THREE.Points(starGeo, starMat);
+        scene.add(backgroundStars);
+
+        // 2. 存储引擎实例
         sceneRef.current = { 
             renderer, scene, camera, controls, raycaster, pointer, planeZ0, intersectionPoint,
+            backgroundStars,
             booksLoaded: false,
             points: null,
             geo: null
@@ -388,6 +408,19 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
 
         setLoaded(true);
     }, []);
+
+    // ---- 处理空书籍时的默认相机位置 ----
+    useEffect(() => {
+        const s = sceneRef.current;
+        if (!s || books.length > 0 || s.booksLoaded) return;
+        
+        // 如果是新宇宙且没有任何书籍，给一个默认的中心视角
+        s.camera.position.set(0, 0, 25);
+        s.camera.lookAt(0, 0, 0);
+        s.controls.target.set(0, 0, 0);
+        s.controls.update();
+        s.booksLoaded = true; // 标记为已初始化视角
+    }, [books.length]);
 
     useEffect(() => {
         const cleanup = initEngine();

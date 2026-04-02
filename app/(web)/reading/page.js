@@ -45,6 +45,12 @@ export default function ReadingOdysseyPage() {
     const [isWarping, setIsWarping] = useState(false);
     const galaxyRef = useRef(null);
 
+    // 关键：稳定回调引用，防止 GalaxyScene 与 Page 之间的状态同步死循环
+    const handleExited = useCallback(() => {
+        setViewMode('globe');
+        setTransitioningTo(null);
+    }, []);
+
     const showToast = useCallback((msg, type = 'info') => {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3000);
@@ -159,44 +165,41 @@ export default function ReadingOdysseyPage() {
             {phase === 'galaxy' && (
                 <>
                     {/* 3D 场景：粒子墙 与 地球 并行渲染以实现零加载切换 */}
-                    {books.length > 0 ? (
-                        <div className={styles.sceneWrapper}>
+                    <div className={styles.sceneWrapper}>
                         <div className={(viewMode === 'globe' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
-                                <GlobeScene 
-                                    books={books} 
-                                    onBookClick={(b) => {
-                                        if (!b) {
-                                            setSelectedBook(null);
-                                            return;
-                                        }
-                                        showToast(`正在聚焦于《${b.title}》...`);
-                                        setAutoFlyTarget(null);
-                                        setSelectedBook(b);
-                                    }} 
-                                    autoFlyTarget={autoFlyTarget} 
-                                    isFocused={!!selectedBook}
-                                    visible={viewMode === 'globe' || transitioningTo === 'globe'}
-                                />
-                            </div>
-                            <div className={(viewMode === 'galaxy' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
-                                <GalaxyScene 
-                                    ref={galaxyRef}
-                                    books={books} 
-                                    onBookClick={handleBookClick} 
-                                    isExitingToGlobe={transitioningTo === 'globe'}
-                                    onExited={() => {
-                                        setViewMode('globe');
-                                        setTransitioningTo(null);
-                                    }}
-                                    visible={viewMode === 'galaxy' || transitioningTo === 'globe'}
-                                />
-                            </div>
+                            <GlobeScene 
+                                books={books} 
+                                onBookClick={(b) => {
+                                    if (!b) {
+                                        setSelectedBook(null);
+                                        return;
+                                    }
+                                    showToast(`正在聚焦于《${b.title}》...`);
+                                    setAutoFlyTarget(null);
+                                    setSelectedBook(b);
+                                }} 
+                                autoFlyTarget={autoFlyTarget} 
+                                isFocused={!!selectedBook}
+                                visible={viewMode === 'globe' || transitioningTo === 'globe'}
+                            />
                         </div>
-                    ) : (
-                        <div className={styles.loadingOverlay} style={{ background: '#050508' }}>
-                            <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.95rem', textAlign: 'center' }}>
+                        <div className={(viewMode === 'galaxy' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
+                            <GalaxyScene 
+                                ref={galaxyRef}
+                                books={books} 
+                                onBookClick={handleBookClick} 
+                                isExitingToGlobe={transitioningTo === 'globe'}
+                                onExited={handleExited}
+                                visible={viewMode === 'galaxy' || transitioningTo === 'globe'}
+                            />
+                        </div>
+                    </div>
+
+                    {books.length === 0 && (
+                        <div className={styles.emptyOverlay}>
+                            <p className={styles.emptyText}>
                                 你的星图还没有书籍<br />
-                                <span style={{ color: '#7c3aed', cursor: 'pointer' }} onClick={() => setShowAddModal(true)}>
+                                <span className={styles.addFirstBtn} onClick={() => setShowAddModal(true)}>
                                     点击添加第一本书 →
                                 </span>
                             </p>
