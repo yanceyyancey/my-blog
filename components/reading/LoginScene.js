@@ -155,7 +155,7 @@ export default function LoginScene({ onLogin, isWarping = false }) {
     return (
         <>
             <canvas ref={canvasRef} className={styles.canvas} />
-            <div className={styles.loginScene} style={contentStyle}>
+            <div className={styles.loginScene}>
                 <p className={styles.loginSubtitle}>Reading Odyssey</p>
                 <h1 className={styles.loginTitle} style={{ animation: 'slideUp 1s ease' }}>全球阅读足迹</h1>
 
