@@ -377,7 +377,10 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         defaultZ.current = aspect < 0.8 ? requiredZ * 1.35 : requiredZ * 1.15;
         
         if (!s.booksLoaded) {
-            s.camera.position.z = defaultZ.current;
+            s.camera.position.set(0, 0, defaultZ.current);
+            s.camera.lookAt(0, 0, 0);
+            s.controls.target.set(0, 0, 0);
+            s.controls.update();
             s.booksLoaded = true;
             introRef.current.progress = 0;
             gsap.to(introRef.current, { progress: 1, duration: 2.8, ease: 'expo.out' });
@@ -436,12 +439,29 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         }
     }));
     
-    // ---- 点击检测 (保持原有数学网格投影法) ----
+    // ---- 点击检测：区分拖拽与点击，防止拖拽误触 ----
     useEffect(() => {
         const s = sceneRef.current; if(!s || !s.renderer) return;
         const canvas = s.renderer.domElement;
-        const onClick = (e) => {
-            if (introRef.current.progress > 1.1) return; // 球体模式或飞星中禁用书墙点击
+        const DRAG_THRESHOLD = 5; // 超过5px位移视为拖拽，不触发点击
+        let mouseDownX = 0, mouseDownY = 0;
+        let isDragging = false;
+
+        const onMouseDown = (e) => {
+            mouseDownX = e.clientX;
+            mouseDownY = e.clientY;
+            isDragging = false;
+        };
+
+        const onMouseMove = (e) => {
+            const dx = Math.abs(e.clientX - mouseDownX);
+            const dy = Math.abs(e.clientY - mouseDownY);
+            if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) isDragging = true;
+        };
+
+        const onMouseUp = (e) => {
+            if (isDragging) return; // 拖拽结束，不触发点击
+            if (introRef.current.progress > 1.1) return; // 球体模式或飞星中禁用
             const rect = canvas.getBoundingClientRect();
             s.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             s.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -450,23 +470,15 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                 const cols = Math.ceil(Math.sqrt(books.length));
                 const rows = Math.ceil(books.length / cols);
                 const SPACING_X = 2.8, SPACING_Y = 3.8;
-                
-                // 计算最近的网格索引
                 const col = Math.round(s.intersectionPoint.x / SPACING_X + (cols - 1) / 2);
                 const row = Math.round(-s.intersectionPoint.y / SPACING_Y + (rows - 1) / 2);
-                
-                // 关键修复：确保点击在合法的网格范围内，防止越界包裹触发
                 if (col >= 0 && col < cols && row >= 0 && row < rows) {
                     const idx = row * cols + col;
-                    
                     if (idx >= 0 && idx < books.length) {
-                        // 核心修复：边界判定，防止误触书与书之间的缝隙
                         const targetCX = (col - (cols - 1) / 2) * SPACING_X;
                         const targetCY = -(row - (rows - 1) / 2) * SPACING_Y;
                         const dx = Math.abs(s.intersectionPoint.x - targetCX);
                         const dy = Math.abs(s.intersectionPoint.y - targetCY);
-                        
-                        // 书籍尺寸为 2.5 x 3.33，此处留出极小 Buffer (1.3 & 1.75)
                         if (dx < 1.3 && dy < 1.75) {
                             dissolvingBookIdxRef.current = idx;
                             triggerDissolve(bookStartIndices.current[idx], () => {
@@ -478,9 +490,16 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                 }
             }
         };
-        canvas.addEventListener('click', onClick);
-        return () => canvas.removeEventListener('click', onClick);
-    }, [books.length]); // 只需要在书堆数量变化时重绑定逻辑
+
+        canvas.addEventListener('mousedown', onMouseDown);
+        canvas.addEventListener('mousemove', onMouseMove);
+        canvas.addEventListener('mouseup', onMouseUp);
+        return () => {
+            canvas.removeEventListener('mousedown', onMouseDown);
+            canvas.removeEventListener('mousemove', onMouseMove);
+            canvas.removeEventListener('mouseup', onMouseUp);
+        };
+    }, [books.length]);
     return (
         <>
             <canvas ref={canvasRef} className={styles.canvas} />
