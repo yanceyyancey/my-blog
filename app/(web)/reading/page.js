@@ -165,6 +165,10 @@ export default function ReadingOdysseyPage() {
                                 <GlobeScene 
                                     books={books} 
                                     onBookClick={(b) => {
+                                        if (!b) {
+                                            setSelectedBook(null);
+                                            return;
+                                        }
                                         showToast(`正在聚焦于《${b.title}》...`);
                                         setAutoFlyTarget(null);
                                         setSelectedBook(b);

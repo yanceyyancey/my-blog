@@ -448,16 +448,29 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             s.raycaster.setFromCamera(s.pointer, s.camera);
             if (s.raycaster.ray.intersectPlane(s.planeZ0, s.intersectionPoint)) {
                 const cols = Math.ceil(Math.sqrt(books.length));
+                const rows = Math.ceil(books.length / cols);
                 const SPACING_X = 2.8, SPACING_Y = 3.8;
+                
+                // 计算最近的网格索引
                 const col = Math.round(s.intersectionPoint.x / SPACING_X + (cols - 1) / 2);
-                const row = Math.round(-s.intersectionPoint.y / SPACING_Y + (Math.ceil(books.length / cols) - 1) / 2);
+                const row = Math.round(-s.intersectionPoint.y / SPACING_Y + (rows - 1) / 2);
                 const idx = row * cols + col;
+                
                 if (idx >= 0 && idx < books.length) {
-                    dissolvingBookIdxRef.current = idx;
-                    triggerDissolve(bookStartIndices.current[idx], () => {
-                        dissolvingBookIdxRef.current = null;
-                        onBookClickRef.current?.(books[idx]);
-                    });
+                    // 核心修复：边界判定，防止误触书与书之间的缝隙
+                    const targetCX = (col - (cols - 1) / 2) * SPACING_X;
+                    const targetCY = -(row - (rows - 1) / 2) * SPACING_Y;
+                    const dx = Math.abs(s.intersectionPoint.x - targetCX);
+                    const dy = Math.abs(s.intersectionPoint.y - targetCY);
+                    
+                    // 书籍尺寸为 2.5 x 3.33，此处留出极小 Buffer (1.3 & 1.7)
+                    if (dx < 1.3 && dy < 1.75) {
+                        dissolvingBookIdxRef.current = idx;
+                        triggerDissolve(bookStartIndices.current[idx], () => {
+                            dissolvingBookIdxRef.current = null;
+                            onBookClickRef.current?.(books[idx]);
+                        });
+                    }
                 }
             }
         };
