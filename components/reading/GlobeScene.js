@@ -163,6 +163,8 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
     const prevFocusedRef = useRef(isFocused);
     const lastHandledTargetIdRef = useRef(null);
     const visibleRef = useRef(visible);
+    const onBookClickRef = useRef(onBookClick); // 补齐缺失的 Ref
+    const interactableMeshesRef = useRef([]); // 关键：使用 Ref 替代隐式全局变量
     useEffect(() => { visibleRef.current = visible; }, [visible]);
 
     // 关键：实时更新回调引用，解决 Stale Closure 问题，确保点击能触发最新的 HUD 逻辑
@@ -210,12 +212,12 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
         const loadContent = async (currentBooks) => {
             // 清理旧的书籍 Mesh
-            interactableMeshes.forEach(m => {
+            interactableMeshesRef.current.forEach(m => {
                 scene.remove(m);
                 if (m.material.uniforms?.uMap?.value) m.material.uniforms.uMap.value.dispose();
                 m.geometry.dispose();
             });
-            interactableMeshes.length = 0;
+            interactableMeshesRef.current.length = 0;
 
             const countries = {};
             currentBooks.forEach(b => {
@@ -233,7 +235,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                     ms.forEach(m => {
                         m.userData = { code, lat, lon, books: bks.filter(b => b.coverUrl).slice(0, 9), meshGrid: grid };
                         m.frustumCulled = false;
-                        scene.add(m); interactableMeshes.push(m);
+                        scene.add(m); interactableMeshesRef.current.push(m);
                         gsap.to(m.material.uniforms.uOpacity, { value: 1, duration: 0.8 });
                     });
                 }
@@ -264,7 +266,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y =-((e.clientY - rect.top) / rect.height) * 2 + 1;
             ray.setFromCamera(mouse, camera);
-            const hits = ray.intersectObjects(interactableMeshes);
+            const hits = ray.intersectObjects(interactableMeshesRef.current);
             if (hits.length) {
                 const hit = hits[0];
                 const { lat, lon, books: bks, meshGrid } = hit.object.userData;
@@ -316,9 +318,13 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         };
         loop();
 
-        stateRef.current = { renderer, interactableMeshes, controls, camera, runAnim, anim, loadContent };
+        stateRef.current = { renderer, interactableMeshes: interactableMeshesRef.current, controls, camera, runAnim, anim, loadContent };
         setSceneReady(true);
-        return () => { cancelAnimationFrame(animId); renderer.dispose(); };
+        return () => { 
+            cancelAnimationFrame(animId); 
+            controls.dispose(); // 补齐清理逻辑
+            renderer.dispose(); 
+        };
     }, []); // 永远只初始化一次
 
     useEffect(() => {
@@ -339,7 +345,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
         // 仅在可见时触发自动化飞行，且确保同一个目标不重复触发
         if (visible && sceneReady && meshesReady && autoFlyTarget && s && lastHandledTargetIdRef.current !== targetId) {
-            const m = s.interactableMeshes.find(x => 
+            const m = interactableMeshesRef.current.find(x => 
                 x.userData?.code === autoFlyTarget.countryCode || 
                 x.userData?.country === autoFlyTarget.country
             );

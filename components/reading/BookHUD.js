@@ -11,7 +11,7 @@ const MOOD_LABELS = {
     dark: { label: '沉重', className: styles.moodDark },
 };
 
-export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete }) {
+export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete, showToast }) {
     const [isEditing, setIsEditing] = useState(false);
     const [quoteText, setQuoteText] = useState(book.quote || '');
     const [saving, setSaving] = useState(false);
@@ -42,8 +42,9 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete 
             if (!res.ok) throw new Error(data.error);
             setIsEditing(false);
             onQuoteSaved?.({ ...book, quote: quoteText });
+            showToast?.('感悟已连接至星图', 'success');
         } catch (err) {
-            alert('保存失败：' + err.message);
+            showToast?.('连接失败：' + err.message, 'error');
         } finally {
             setSaving(false);
         }
@@ -65,8 +66,9 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete 
             if (!res.ok) throw new Error(data.error);
             onDelete?.(book.id);
             onClose();
+            showToast?.('星核已移除', 'success');
         } catch (err) {
-            alert('删除失败：' + err.message);
+            showToast?.('移除失败：' + err.message, 'error');
         } finally {
             setDeleting(false);
             setShowConfirmDelete(false);

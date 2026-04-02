@@ -41,6 +41,7 @@ export default function ReadingOdysseyPage() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [autoFlyTarget, setAutoFlyTarget] = useState(null);
     const [toast, setToast] = useState(null);
+    const [searchText, setSearchText] = useState(''); // 关键：补齐搜索状态
     const [isWarping, setIsWarping] = useState(false);
     const galaxyRef = useRef(null);
 
@@ -299,6 +300,7 @@ export default function ReadingOdysseyPage() {
                 <BookHUD
                     book={selectedBook}
                     gistId={user?.gistId}
+                    showToast={showToast}
                     onClose={() => setSelectedBook(null)}
                     onQuoteSaved={handleQuoteSaved}
                     onDelete={handleDelete}
@@ -309,6 +311,7 @@ export default function ReadingOdysseyPage() {
             {showAddModal && phase === 'galaxy' && (
                 <AddBookModal
                     gistId={user?.gistId}
+                    showToast={showToast}
                     onClose={() => setShowAddModal(false)}
                     onBooksAdded={handleBooksAdded}
                 />

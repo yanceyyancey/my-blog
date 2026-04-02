@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import styles from './reading.module.css';
 
-export default function AddBookModal({ gistId, onClose, onBooksAdded }) {
+export default function AddBookModal({ gistId, onClose, onBooksAdded, showToast }) {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [results, setResults] = useState([]);
@@ -59,7 +59,7 @@ export default function AddBookModal({ gistId, onClose, onBooksAdded }) {
                     onBooksAdded(successBooks);
                 } catch (err) {
                     console.error('批量更新 Gist 失败:', err);
-                    showToast('同步到云端失败，请稍后重试', 'error');
+                    showToast?.('同步到云端失败，请稍后重试', 'error');
                 }
             }
 
