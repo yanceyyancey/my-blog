@@ -40,10 +40,10 @@ function initStarField(scene) {
     });
     const points = new THREE.Points(geo, mat);
     points.frustumCulled = false; // 稳定性增强
-    return points;
+    return { points, geo };
 }
 
-export default function LoginScene({ onLogin }) {
+export default function LoginScene({ onLogin, isWarping = false }) {
     const [code, setCode] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -66,19 +66,30 @@ export default function LoginScene({ onLogin }) {
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.z = 50;
 
-        const stars = initStarField(scene);
+        const { points: stars, geo: starGeo } = initStarField(scene);
         scene.add(stars);
+        const starPos = starGeo.attributes.position.array;
+        const starOrigZ = new Float32Array(starPos.length / 3);
+        for(let i=0; i<starOrigZ.length; i++) starOrigZ[i] = starPos[i*3+2];
 
         let animId;
         let t = 0;
         const animate = () => {
             animId = requestAnimationFrame(animate);
             t += 0.005;
-            stars.rotation.y += 0.00015;
-            stars.rotation.x += 0.00008;
             
-            // 呼吸感：微妙的微颤与亮度起伏
-            stars.material.opacity = 0.5 + Math.sin(t) * 0.12;
+            if (isWarping) {
+                // 跃迁效果：星星加速旋转并冲向镜头
+                stars.rotation.y += 0.05;
+                stars.rotation.x += 0.02;
+                camera.position.z -= 1.5; 
+                stars.material.opacity *= 0.98; // 逐渐虚化
+                stars.scale.multiplyScalar(1.02); // 膨胀感
+            } else {
+                stars.rotation.y += 0.00015;
+                stars.rotation.x += 0.00008;
+                stars.material.opacity = 0.5 + Math.sin(t) * 0.12;
+            }
             
             renderer.render(scene, camera);
         };
@@ -144,11 +155,11 @@ export default function LoginScene({ onLogin }) {
     return (
         <>
             <canvas ref={canvasRef} className={styles.canvas} />
-            <div className={styles.loginScene}>
+            <div className={styles.loginScene} style={contentStyle}>
                 <p className={styles.loginSubtitle}>Reading Odyssey</p>
-                <h1 className={styles.loginTitle}>全球阅读足迹</h1>
+                <h1 className={styles.loginTitle} style={{ animation: 'slideUp 1s ease' }}>全球阅读足迹</h1>
 
-                <form className={styles.loginForm} onSubmit={handleSubmit}>
+                <form className={styles.loginForm} onSubmit={handleSubmit} style={{ animation: 'fadeIn 1.5s ease' }}>
                     <input
                         type="text"
                         className={`${styles.loginInput} ${isTyping ? styles.typing : ''}`}

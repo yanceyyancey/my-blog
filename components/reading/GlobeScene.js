@@ -162,9 +162,13 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
     const [meshesReady, setMeshesReady] = useState(false);
     const prevFocusedRef = useRef(isFocused);
     const lastHandledTargetIdRef = useRef(null);
-    const onBookClickRef = useRef(onBookClick);
     const visibleRef = useRef(visible);
     useEffect(() => { visibleRef.current = visible; }, [visible]);
+
+    // 关键：实时更新回调引用，解决 Stale Closure 问题，确保点击能触发最新的 HUD 逻辑
+    useEffect(() => {
+        onBookClickRef.current = onBookClick;
+    }, [onBookClick]);
 
     const init = useCallback(() => {
         const container = mountRef.current;
@@ -204,15 +208,22 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         scene.add(new THREE.AmbientLight(0xffffff, 1.4));
         const sun = new THREE.DirectionalLight(0xfff8e8, 2.5); sun.position.set(30, 20, 10); scene.add(sun);
 
-        const interactableMeshes = [];
-        const countries = {};
-        books.forEach(b => {
-            if (!b.countryCode) return;
-            if (!countries[b.countryCode]) countries[b.countryCode] = { books:[], lat:b.lat, lon:b.lon };
-            countries[b.countryCode].books.push(b);
-        });
+        const loadContent = async (currentBooks) => {
+            // 清理旧的书籍 Mesh
+            interactableMeshes.forEach(m => {
+                scene.remove(m);
+                if (m.material.uniforms?.uMap?.value) m.material.uniforms.uMap.value.dispose();
+                m.geometry.dispose();
+            });
+            interactableMeshes.length = 0;
 
-        const loadContent = async () => {
+            const countries = {};
+            currentBooks.forEach(b => {
+                if (!b.countryCode) return;
+                if (!countries[b.countryCode]) countries[b.countryCode] = { books:[], lat:b.lat, lon:b.lon };
+                countries[b.countryCode].books.push(b);
+            });
+
             await Promise.all(Object.entries(countries).map(async ([code, {books:bks, lat, lon}]) => {
                 const geo = await getCountryGeo(code);
                 const res = await makeCoverTexture(bks, countryColor(code));
@@ -221,16 +232,18 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                     const ms = buildCountryMeshes(geo, lat, lon, tex);
                     ms.forEach(m => {
                         m.userData = { code, lat, lon, books: bks.filter(b => b.coverUrl).slice(0, 9), meshGrid: grid };
-                        m.frustumCulled = false; // 增强交互稳定性
+                        m.frustumCulled = false;
                         scene.add(m); interactableMeshes.push(m);
                         gsap.to(m.material.uniforms.uOpacity, { value: 1, duration: 0.8 });
                     });
                 }
             }));
-            gsap.to(globeMesh.material, { opacity: 1, duration: 1.2 });
+            if (globeMesh.material.opacity < 1) {
+                gsap.to(globeMesh.material, { opacity: 1, duration: 1.2 });
+            }
             setMeshesReady(true);
         };
-        loadContent();
+        loadContent(books);
 
         const runAnim = (lat, lon, targetR, type, onDone) => {
             anim.active = false; // 杀掉之前的
@@ -303,7 +316,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         };
         loop();
 
-        stateRef.current = { renderer, interactableMeshes, controls, camera, runAnim, anim };
+        stateRef.current = { renderer, interactableMeshes, controls, camera, runAnim, anim, loadContent };
         setSceneReady(true);
         return () => { cancelAnimationFrame(animId); renderer.dispose(); };
     }, []); // 永远只初始化一次
@@ -344,6 +357,13 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             lastHandledTargetIdRef.current = null;
         }
     }, [visible, sceneReady, meshesReady, autoFlyTarget]);
+
+    useEffect(() => {
+        const s = stateRef.current;
+        if (s && s.loadContent && sceneReady) {
+            s.loadContent(books);
+        }
+    }, [books, sceneReady]);
 
     useEffect(() => { const cleanup = init(); return cleanup; }, [init]);
 

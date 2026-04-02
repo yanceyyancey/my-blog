@@ -169,19 +169,14 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     // 冗余保障：当 visible 变为 true 时，如果进度还停留在地球状态，自动拉回书墙模式
     useEffect(() => {
         if (visible && introRef.current.progress >= 2 && !isExitingToGlobe) {
-            console.log('>>> [AUTO-FIX] Restoring Wall Layout on Visibility...');
-            gsap.to(introRef.current, { progress: 1, duration: 1.2, ease: 'expo.inOut', overwrite: 'auto' });
-            if (sceneRef.current) {
-               gsap.to(sceneRef.current.points.material, { opacity: 0.95, size: IS_MOBILE ? 0.18 : 0.12, duration: 0.8 });
-               if (sceneRef.current.controls) sceneRef.current.controls.enabled = true;
-            }
-            if (cameraRef.current && defaultZ.current > 0) gsap.to(cameraRef.current.position, { z: defaultZ.current, duration: 1, ease: 'expo.out' });
+            console.log('>>> [AUTO-FIX] Restoring Wall Layout on Visibility...');            if (cameraRef.current && defaultZ.current > 0) gsap.to(cameraRef.current.position, { z: defaultZ.current, duration: 1, ease: 'expo.out' });
             dissolvingBookIdxRef.current = null;
         }
     }, [visible, isExitingToGlobe]);
 
-    useEffect(() => {
-        if (!canvasRef.current || books.length === 0) return;
+    // ---- 真正的场景初始化 (Renderer/Camera/Controls) 只运行一次 ----
+    const initEngine = useCallback(() => {
+        if (!canvasRef.current || sceneRef.current) return;
 
         const canvas = canvasRef.current;
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -193,310 +188,282 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         cameraRef.current = camera;
 
-        // 计算网格行列以及间距配置
-        const cols = Math.ceil(Math.sqrt(books.length));
-        const rows = Math.ceil(books.length / cols);
-        const SPACING_X = 2.8; // 更紧凑的横向间距
-        const SPACING_Y = 3.8; // 更紧凑的纵向间距
-
-        // 【充满屏幕的核心】：动态计算包围网格所需完美的 Z 轴距离
-        const gridW = (cols - 1) * SPACING_X + 2.5; 
-        const gridH = (rows - 1) * SPACING_Y + 3.33; 
-        const aspect = window.innerWidth / window.innerHeight;
-        const fovRad = (60 * Math.PI) / 180;
-        
-        const requiredZ_H = (gridH / 2) / Math.tan(fovRad / 2);
-        const requiredZ_W = (gridW / 2) / Math.tan(fovRad / 2) / aspect;
-        
-        // 放大 15% 留下边界呼吸空间
-        const zPos = Math.max(requiredZ_H, requiredZ_W) * 1.15;
-        defaultZ.current = aspect < 0.8 ? zPos * 1.2 : zPos;
-        camera.position.set(0, 0, defaultZ.current);
-
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.minDistance = 5;
         controls.maxDistance = 80;
 
-        // ---- 合并所有书的粒子到单个 BufferGeometry ----
-        const buildScene = async () => {
-            const totalParticles = books.length * PARTICLE_COUNT;
-            const allPositions = new Float32Array(totalParticles * 3);
-            const allColors = new Float32Array(totalParticles * 3);
-            const allOrig = new Float32Array(totalParticles * 3); // 最终目标位置
-            const allStart = new Float32Array(totalParticles * 3); // 初始散落位置
-            const allGlobe = new Float32Array(totalParticles * 3); // 离场时构成地球外围的位置
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        const planeZ0 = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        const intersectionPoint = new THREE.Vector3();
 
-            bookStartIndices.current = [];
-
-            bookStartIndices.current = [];
-
-            // 极致优化：预加载并并行采样所有封面颜色，拒绝串行 Await 导致的白屏尴尬
-            const allCoverColors = await Promise.all(books.map(b => {
-                const proxyUrl = `/api/cover-proxy?url=${encodeURIComponent(b.coverUrl || '')}`;
-                return sampleCoverColors(proxyUrl);
-            }));
-
-            for (let i = 0; i < books.length; i++) {
-                const book = books[i];
-                const col = i % cols;
-                const row = Math.floor(i / cols);
-                const cx = (col - (cols - 1) / 2) * SPACING_X;
-                const cy = -(row - (rows - 1) / 2) * SPACING_Y;
-
-                let lat = book.lat ?? null;
-                let lon = book.lon ?? null;
-                
-                if (lat === null || lon === null) {
-                    let hash = 0;
-                    const str = book.title || "";
-                    for (let j = 0; j < str.length; j++) hash = ((hash << 5) - hash) + str.charCodeAt(j);
-                    lat = (Math.abs(hash) % 120) - 60;
-                    lon = (Math.abs(hash * 31) % 240) - 120;
-                }
-                
-                const basePhi = (90 - lat) * Math.PI / 180;
-                const baseTheta = (lon + 180) * Math.PI / 180;
-                const globeR = 5.02;
-
-                const startCX = cx + (Math.random() - 0.5) * 300;
-                const startCY = cy + (Math.random() - 0.5) * 300;
-                const startCZ = (Math.random() - 0.5) * 400 + 350; // 极深初始位，增加史诗感
-
-                const colors = allCoverColors[i];
-                const { positions, particleColors } = generateBookParticles(0, 0, 0, colors);
-
-                const startIdx = i * PARTICLE_COUNT * 3;
-                bookStartIndices.current.push(startIdx / 3);
-
-                for (let j = 0; j < positions.length; j += 3) {
-                    const px = positions[j];
-                    const py = positions[j + 1];
-                    const pz = positions[j + 2];
-
-                    allOrig[startIdx + j]     = cx + px;
-                    allOrig[startIdx + j + 1] = cy + py;
-                    allOrig[startIdx + j + 2] = pz;
-
-                    allStart[startIdx + j]     = startCX + px;
-                    allStart[startIdx + j + 1] = startCY + py;
-                    allStart[startIdx + j + 2] = startCZ + pz;
-
-                    allPositions[startIdx + j]     = allStart[startIdx + j];
-                    allPositions[startIdx + j + 1] = allStart[startIdx + j + 1];
-                    allPositions[startIdx + j + 2] = allStart[startIdx + j + 2];
-
-                    const rFinal = globeR + pz * 0.2;
-                    allGlobe[startIdx + j]     = -rFinal * Math.sin(basePhi) * Math.cos(baseTheta);
-                    allGlobe[startIdx + j + 1] = rFinal * Math.cos(basePhi);
-                    allGlobe[startIdx + j + 2] = rFinal * Math.sin(basePhi) * Math.sin(baseTheta);
-
-                    allColors[startIdx + j]     = particleColors[j];
-                    allColors[startIdx + j + 1] = particleColors[j + 1];
-                    allColors[startIdx + j + 2] = particleColors[j + 2];
-                }
-            }
-
-            const geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.BufferAttribute(allPositions, 3));
-            geo.setAttribute('color', new THREE.BufferAttribute(allColors, 3));
-            geo.computeBoundingSphere(); // 初始化包围体，确保开始时不被错误剔除
-
-            // 生成体积光感的小圆球贴图（Radial Gradient），替代扁平的点
-            const circleCanvas = document.createElement('canvas');
-            circleCanvas.width = 32;
-            circleCanvas.height = 32;
-            const ctx = circleCanvas.getContext('2d');
-            const gradient = ctx.createRadialGradient(16, 16, 2, 16, 16, 16);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');      // 高光核心
-            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 1)');     // 扩大白心区域
-            gradient.addColorStop(0.65, 'rgba(255, 255, 255, 0.5)');  // 软边缘
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');      // 剔除
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 32, 32);
-            const circleTexture = new THREE.CanvasTexture(circleCanvas);
-
-            const mat = new THREE.PointsMaterial({
-                size: IS_MOBILE ? 0.18 : 0.12, // 尺寸稍微调小，让细节更精致，不至于太肉
-                map: circleTexture,
-                alphaTest: 0.05, // 软剔除，保留球体柔和光晕
-                vertexColors: true,
-                transparent: true,
-                opacity: 0.95,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-                sizeAttenuation: true,
-            });
-
-            const points = new THREE.Points(geo, mat);
-            points.frustumCulled = false; // 粒子位移频繁，直接禁用剔除以解决黑屏/消失问题
-            scene.add(points);
-
-            // 入场动画全局进度控制器
-            introRef.current.progress = 0;
-            gsap.to(introRef.current, {
-                progress: 1,
-                duration: 3.2, // 总体时长拉长，更有史诗感
-                ease: 'expo.out', // 由快到慢的极致曲线
-                overwrite: 'auto'
-            });
-
-            // 呼吸动画（随机微浮动与入场插值融合在一起，产生平滑集结动效！）
-            let t = 0;
-            const breathe = () => {
-                t += 0.008; // 减慢呼吸频率，更沉稳
-                const pos = geo.attributes.position.array;
-                const p = introRef.current.progress;
-                
-                for (let i = 0; i < books.length; i++) {
-                    if (i === dissolvingBookIdxRef.current) continue; // 跳过正在执行解体动画的书籍，由 GSAP 接管
-                    const start = bookStartIndices.current[i];
-                    for (let j = 0; j < PARTICLE_COUNT; j++) {
-                        const idx = (start + j) * 3;
-                        
-                        let bx, by, bz;
-                        if (p <= 1) {
-                            // Stage 1: 从散落 -> 阵列
-                            bx = allStart[idx]     + (allOrig[idx]     - allStart[idx])     * p;
-                            by = allStart[idx + 1] + (allOrig[idx + 1] - allStart[idx + 1]) * p;
-                            bz = allStart[idx + 2] + (allOrig[idx + 2] - allStart[idx + 2]) * p;
-                        } else {
-                            // Stage 2: 极致顺滑的刚性飞越 (每一本书作为一个整体矩形，优雅划过抛物线)
-                            const p2 = p - 1; 
-                            const startX = allOrig[idx], startY = allOrig[idx + 1], startZ = allOrig[idx + 2];
-                            const endX = allGlobe[idx], endY = allGlobe[idx + 1], endZ = allGlobe[idx + 2];
-
-                            // 抛物线弧度（统一弧度，不加随机散乱感，保证阅读感流畅）
-                            const arch = Math.sin(p2 * Math.PI) * 4.5;
-                            
-                            bx = startX + (endX - startX) * p2;
-                            by = startY + (endY - startY) * p2;
-                            bz = startZ + (endZ - startZ) * p2 + arch; 
-                        }
-
-                        // 整个书架极其轻微的全局移动，不破坏封面成型
-                        pos[idx + 2] = bz + Math.sin(t * 0.4 + i * 1.5) * 0.04;
-                        pos[idx]     = bx;
-                        pos[idx + 1] = by + Math.cos(t * 0.5 + i * 1.5) * 0.02;
-                    }
-                }
-                geo.attributes.position.needsUpdate = true;
-            };
-
-            // ---- 点击检测（数学网格投影法，100% 准确率） ----
-            const raycaster = new THREE.Raycaster();
-            const pointer = new THREE.Vector2();
-            const planeZ0 = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // 书墙所在的 Z=0 平面
-            const intersectionPoint = new THREE.Vector3();
-
-            const onClick = (e) => {
-                const rect = canvas.getBoundingClientRect();
-                pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-                pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-                
-                raycaster.setFromCamera(pointer, camera);
-                // 找到射线与 Z=0 平面的交点
-                if (raycaster.ray.intersectPlane(planeZ0, intersectionPoint)) {
-                    const worldX = intersectionPoint.x;
-                    const worldY = intersectionPoint.y;
-
-                    // 反向推算行列 (Invert grid math)
-                    const col = Math.round(worldX / SPACING_X + (cols - 1) / 2);
-                    const row = Math.round(-worldY / SPACING_Y + (rows - 1) / 2);
-
-                    // 边界检查
-                    if (col >= 0 && col < cols && row >= 0 && row < rows) {
-                        const bookIdx = row * cols + col;
-                        if (bookIdx >= 0 && bookIdx < books.length) {
-                            console.log('>>> [CLICK] Book Found at:', col, row, 'Index:', bookIdx);
-                            // 记录正在解体的索引，防止 breathe 重置
-                            dissolvingBookIdxRef.current = bookIdx;
-                            // 解体动画
-                            triggerDissolve(geo, bookStartIndices.current[bookIdx], () => {
-                                dissolvingBookIdxRef.current = null;
-                                if (onBookClickRef.current) onBookClickRef.current(books[bookIdx]);
-                            });
-                        }
-                    }
-                }
-            };
-
-            canvas.addEventListener('click', onClick);
-
-            // ---- 解体动画 ----
-            const triggerDissolve = (geometry, startParticleIdx, callback) => {
-                controls.enabled = false;
-                const pos = geometry.attributes.position.array;
-                const tempObjs = [];
-
-                for (let j = 0; j < PARTICLE_COUNT; j++) {
-                    const idx = (startParticleIdx + j) * 3;
-                    tempObjs.push({
-                        x: pos[idx],
-                        y: pos[idx + 1],
-                        z: pos[idx + 2],
-                        tx: (Math.random() - 0.5) * 30,
-                        ty: (Math.random() - 0.5) * 30,
-                        tz: (Math.random() - 0.5) * 30,
-                    });
-                }
-
-                // 使用代理对象确保 GSAP 补间动画始终触发 onUpdate
-                gsap.to({ p: 0 }, {
-                    p: 1,
-                    duration: 1.2, 
-                    ease: 'power2.inOut',
-                    onUpdate: function () {
-                        const p = this.progress(); 
-                        for (let j = 0; j < PARTICLE_COUNT; j++) {
-                            const idx = (startParticleIdx + j) * 3;
-                            const o = tempObjs[j];
-                            pos[idx] = o.x + (o.tx - o.x) * p;
-                            pos[idx + 1] = o.y + (o.ty - o.y) * p;
-                            pos[idx + 2] = o.z + (o.tz - o.z) * p;
-                        }
-                        geometry.attributes.position.needsUpdate = true;
-                    },
-                    onComplete: callback
-                });
-            };
-
-            sceneRef.current = { scene, camera, renderer, controls, points, geo, breathe, triggerDissolve };
-            setLoaded(true);
-
-            let animId;
-            const animate = () => {
-                animId = requestAnimationFrame(animate);
-                if (visibleRef.current) {
-                    breathe();
-                    controls.update();
-                    renderer.render(scene, camera);
-                }
-            };
-            animate();
-
-            const onResize = () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            };
-            window.addEventListener('resize', onResize);
-
-            return () => {
-                cancelAnimationFrame(animId);
-                canvas.removeEventListener('click', onClick);
-                window.removeEventListener('resize', onResize);
-                renderer.dispose();
-                geo.dispose();
-                mat.dispose();
-            };
+        // 存储引擎实例
+        sceneRef.current = { 
+            renderer, scene, camera, controls, raycaster, pointer, planeZ0, intersectionPoint,
+            booksLoaded: false,
+            points: null,
+            geo: null
         };
 
-        const cleanup = buildScene();
-        return () => { cleanup.then(fn => fn && fn()); };
-    }, [books]); // 移除 onBookClick，防止点击导致全场卸载重绘
+        const onResize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+        window.addEventListener('resize', onResize);
 
+        let animId;
+        const animate = () => {
+            animId = requestAnimationFrame(animate);
+            if (visibleRef.current) {
+                if (sceneRef.current.breathe) sceneRef.current.breathe();
+                controls.update();
+                renderer.render(scene, camera);
+            }
+        };
+        animate();
+
+        return () => {
+            cancelAnimationFrame(animId);
+            window.removeEventListener('resize', onResize);
+            renderer.dispose();
+        };
+    }, []);
+
+    // ---- 书籍数据加载/更新逻辑 (响应 [books] 变化) ----
+    const updateBookshelf = useCallback(async (currentBooks) => {
+        const s = sceneRef.current;
+        if (!s || currentBooks.length === 0) return;
+
+        console.log('>>> [ACTION] Syncing Bookshelf Data:', currentBooks.length);
+
+        // 1. 采样封面颜色
+        const allCoverColors = await Promise.all(currentBooks.map(b => {
+            const proxyUrl = `/api/cover-proxy?url=${encodeURIComponent(b.coverUrl || '')}`;
+            return sampleCoverColors(proxyUrl);
+        }));
+
+        // 2. 准备缓冲区数据
+        const totalParticles = currentBooks.length * PARTICLE_COUNT;
+        const allPositions = new Float32Array(totalParticles * 3);
+        const allColors = new Float32Array(totalParticles * 3);
+        const allOrig = new Float32Array(totalParticles * 3); 
+        const allStart = new Float32Array(totalParticles * 3); 
+        const allGlobe = new Float32Array(totalParticles * 3); 
+
+        const cols = Math.ceil(Math.sqrt(currentBooks.length));
+        const rows = Math.ceil(currentBooks.length / cols);
+        const SPACING_X = 2.8, SPACING_Y = 3.8;
+
+        const indices = [];
+
+        for (let i = 0; i < currentBooks.length; i++) {
+            const book = currentBooks[i];
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const cx = (col - (cols - 1) / 2) * SPACING_X;
+            const cy = -(row - (rows - 1) / 2) * SPACING_Y;
+
+            let lat = book.lat ?? 0, lon = book.lon ?? 0;
+            const basePhi = (90 - lat) * Math.PI / 180;
+            const baseTheta = (lon + 180) * Math.PI / 180;
+            const globeR = 5.02;
+
+            const startCX = cx + (Math.random() - 0.5) * 300, startCY = cy + (Math.random() - 0.5) * 300;
+            const startCZ = (Math.random() - 0.5) * 400 + 350;
+
+            const colors = allCoverColors[i];
+            const { positions, particleColors } = generateBookParticles(0, 0, 0, colors);
+            const startIdx = i * PARTICLE_COUNT * 3;
+            indices.push(startIdx / 3);
+
+            for (let j = 0; j < positions.length; j += 3) {
+                const idx = startIdx + j;
+                allOrig[idx] = cx + positions[j];
+                allOrig[idx + 1] = cy + positions[j + 1];
+                allOrig[idx + 2] = positions[j + 2];
+                allStart[idx] = startCX + positions[j];
+                allStart[idx + 1] = startCY + positions[j + 1];
+                allStart[idx + 2] = startCZ + positions[j + 2];
+                allPositions[idx] = allStart[idx];
+                allPositions[idx + 1] = allStart[idx + 1];
+                allPositions[idx + 2] = allStart[idx + 2];
+                const rFinal = globeR + positions[j + 2] * 0.2;
+                allGlobe[idx] = -rFinal * Math.sin(basePhi) * Math.cos(baseTheta);
+                allGlobe[idx + 1] = rFinal * Math.cos(basePhi);
+                allGlobe[idx + 2] = rFinal * Math.sin(basePhi) * Math.sin(baseTheta);
+                allColors[idx] = particleColors[j];
+                allColors[idx + 1] = particleColors[j + 1];
+                allColors[idx + 2] = particleColors[j + 2];
+            }
+        }
+
+        // 3. 构建/更新 BufferGeometry
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(allPositions, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(allColors, 3));
+        geo.computeBoundingSphere();
+
+        // 4. 清理旧内容并替换新内容
+        if (s.points) {
+            s.scene.remove(s.points);
+            s.geo?.dispose();
+        }
+
+        const circleTexture = new THREE.CanvasTexture(
+            (() => {
+                const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+                const ctx = c.getContext('2d');
+                const g = ctx.createRadialGradient(16, 16, 2, 16, 16, 16);
+                g.addColorStop(0, 'rgba(255, 255, 255, 1)'); g.addColorStop(0.3, 'rgba(255, 255, 255, 1)');
+                g.addColorStop(0.65, 'rgba(255, 255, 255, 0.5)'); g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = g; ctx.fillRect(0, 0, 32, 32); return c;
+            })()
+        );
+
+        const mat = new THREE.PointsMaterial({
+            size: IS_MOBILE ? 0.18 : 0.12, map: circleTexture, alphaTest: 0.05,
+            vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+
+        const points = new THREE.Points(geo, mat);
+        points.frustumCulled = false;
+        s.scene.add(points);
+
+        // 5. 更新 Ref 存储
+        bookStartIndices.current = indices;
+        s.geo = geo; s.points = points;
+        s.allStart = allStart; s.allOrig = allOrig; s.allGlobe = allGlobe;
+
+        const updateBreathe = () => {
+            if (dissolvingBookIdxRef.current !== null) return;
+            const p = introRef.current.progress;
+            const pos = geo.attributes.position.array;
+            const t = Date.now() * 0.001 * 0.6;
+            for (let i = 0; i < currentBooks.length; i++) {
+                if (i === dissolvingBookIdxRef.current) continue;
+                const start = indices[i];
+                const iOffset = i * 1.5;
+                for (let j = 0; j < PARTICLE_COUNT; j++) {
+                    const idx = (start + j) * 3;
+                    let bx, by, bz;
+                    if (p <= 1) {
+                        bx = allStart[idx] + (allOrig[idx] - allStart[idx]) * p;
+                        by = allStart[idx + 1] + (allOrig[idx + 1] - allStart[idx + 1]) * p;
+                        bz = allStart[idx + 2] + (allOrig[idx + 2] - allStart[idx + 2]) * p;
+                    } else {
+                        const p2 = p - 1;
+                        bx = allOrig[idx] + (allGlobe[idx] - allOrig[idx]) * p2;
+                        by = allOrig[idx + 1] + (allGlobe[idx + 1] - allOrig[idx + 1]) * p2;
+                        bz = allOrig[idx + 2] + (allGlobe[idx + 2] - allOrig[idx + 2]) * p2 + Math.sin(p2 * Math.PI) * 4.5;
+                    }
+                    pos[idx] = bx;
+                    pos[idx + 1] = by + Math.cos(t + iOffset) * 0.02;
+                    pos[idx + 2] = bz + Math.sin(t * 0.8 + iOffset) * 0.04;
+                }
+            }
+            geo.attributes.position.needsUpdate = true;
+        };
+        s.breathe = updateBreathe;
+
+        // 6. 重新校准相机
+        const gridW = (cols - 1) * SPACING_X + 2.5;
+        const gridH = (rows - 1) * SPACING_Y + 3.33;
+        const aspect = window.innerWidth / window.innerHeight;
+        const fovRad = (60 * Math.PI) / 180;
+        const requiredZ = Math.max((gridH / 2) / Math.tan(fovRad / 2), (gridW / 2) / Math.tan(fovRad / 2) / aspect);
+        defaultZ.current = aspect < 0.8 ? requiredZ * 1.35 : requiredZ * 1.15;
+        
+        if (!s.booksLoaded) {
+            s.camera.position.z = defaultZ.current;
+            s.booksLoaded = true;
+            introRef.current.progress = 0;
+            gsap.to(introRef.current, { progress: 1, duration: 2.8, ease: 'expo.out' });
+        }
+
+        setLoaded(true);
+    }, []);
+
+    useEffect(() => {
+        const cleanup = initEngine();
+        return () => cleanup?.();
+    }, [initEngine]);
+
+    useEffect(() => {
+        if (books.length > 0) updateBookshelf(books);
+    }, [books, updateBookshelf]);
+
+    const triggerDissolve = (startParticleIdx, callback) => {
+        const s = sceneRef.current; if (!s || !s.geo) return;
+        s.controls.enabled = false;
+        const pos = s.geo.attributes.position.array;
+        const temp = [];
+        for (let j = 0; j < PARTICLE_COUNT; j++) {
+            const idx = (startParticleIdx + j) * 3;
+            temp.push({ 
+                x: pos[idx], y: pos[idx + 1], z: pos[idx + 2], 
+                tx: (Math.random() - 0.5) * 40, ty: (Math.random() - 0.5) * 40, tz: (Math.random() - 0.5) * 40 
+            });
+        }
+        gsap.to({ p: 0 }, {
+            p: 1, duration: 1.2, ease: 'power2.inOut',
+            onUpdate: function () {
+                const p = this.progress();
+                for (let j = 0; j < PARTICLE_COUNT; j++) {
+                    const idx = (startParticleIdx + j) * 3;
+                    const o = temp[j];
+                    pos[idx] = o.x + (o.tx - o.x) * p;
+                    pos[idx+1] = o.y + (o.ty - o.y) * p;
+                    pos[idx+2] = o.z + (o.tz - o.z) * p;
+                }
+                s.geo.attributes.position.needsUpdate = true;
+            },
+            onComplete: callback
+        });
+    };
+
+    useImperativeHandle(ref, () => ({
+        triggerBookDissolve: (bookIdx, callback) => {
+            if (bookStartIndices.current[bookIdx] !== undefined) {
+                dissolvingBookIdxRef.current = bookIdx;
+                triggerDissolve(bookStartIndices.current[bookIdx], () => {
+                    dissolvingBookIdxRef.current = null;
+                    callback?.();
+                });
+            }
+        }
+    }));
+    
+    // ---- 点击检测 (保持原有数学网格投影法) ----
+    useEffect(() => {
+        const s = sceneRef.current; if(!s || !s.renderer) return;
+        const canvas = s.renderer.domElement;
+        const onClick = (e) => {
+            if (introRef.current.progress > 1.1) return; // 球体模式或飞星中禁用书墙点击
+            const rect = canvas.getBoundingClientRect();
+            s.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            s.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            s.raycaster.setFromCamera(s.pointer, s.camera);
+            if (s.raycaster.ray.intersectPlane(s.planeZ0, s.intersectionPoint)) {
+                const cols = Math.ceil(Math.sqrt(books.length));
+                const SPACING_X = 2.8, SPACING_Y = 3.8;
+                const col = Math.round(s.intersectionPoint.x / SPACING_X + (cols - 1) / 2);
+                const row = Math.round(-s.intersectionPoint.y / SPACING_Y + (Math.ceil(books.length / cols) - 1) / 2);
+                const idx = row * cols + col;
+                if (idx >= 0 && idx < books.length) {
+                    dissolvingBookIdxRef.current = idx;
+                    triggerDissolve(bookStartIndices.current[idx], () => {
+                        dissolvingBookIdxRef.current = null;
+                        onBookClickRef.current?.(books[idx]);
+                    });
+                }
+            }
+        };
+        canvas.addEventListener('click', onClick);
+        return () => canvas.removeEventListener('click', onClick);
+    }, [books.length]); // 只需要在书堆数量变化时重绑定逻辑
     return (
         <>
             <canvas ref={canvasRef} className={styles.canvas} />

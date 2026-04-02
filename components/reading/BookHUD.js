@@ -16,6 +16,7 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete 
     const [quoteText, setQuoteText] = useState(book.quote || '');
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [showConfirmDelete, setShowConfirmDelete] = useState(false);
     const textareaRef = useRef(null);
 
     const mood = MOOD_LABELS[book.mood] || MOOD_LABELS.default;
@@ -48,8 +49,11 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete 
         }
     };
 
-    const handleDelete = async () => {
-        if (!confirm(`确认从你的星图中移除《${book.title}》？`)) return;
+    const handleDeleteClick = () => {
+        setShowConfirmDelete(true);
+    };
+
+    const performDelete = async () => {
         setDeleting(true);
         try {
             const res = await fetch('/api/reading/gist', {
@@ -65,6 +69,7 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete 
             alert('删除失败：' + err.message);
         } finally {
             setDeleting(false);
+            setShowConfirmDelete(false);
         }
     };
 
@@ -142,9 +147,28 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete 
                 </div>
 
                 {/* 删除 */}
-                <button className={styles.hudDeleteBtn} onClick={handleDelete} disabled={deleting}>
+                <button className={styles.hudDeleteBtn} onClick={handleDeleteClick} disabled={deleting}>
                     {deleting ? '移除中...' : '从星图中移除这本书'}
                 </button>
+
+                {/* 确认删除 Overlay */}
+                {showConfirmDelete && (
+                    <div className={styles.hudConfirmDelete}>
+                        <div className={styles.confirmTitle}>确认移除？</div>
+                        <div className={styles.confirmText}>
+                            《{book.title}》将从你的星图中永久消失，<br />
+                            但你随时可以重新搜索并添加它。
+                        </div>
+                        <div className={styles.confirmActions}>
+                            <button className={`${styles.confirmBtn} ${styles.confirmBtnNo}`} onClick={() => setShowConfirmDelete(false)}>
+                                留着它
+                            </button>
+                            <button className={`${styles.confirmBtn} ${styles.confirmBtnYes}`} onClick={performDelete} disabled={deleting}>
+                                {deleting ? '正在移除...' : '确认移除'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

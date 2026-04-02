@@ -39,14 +39,20 @@ export default function ReadingOdysseyPage() {
     const [books, setBooks] = useState([]);
     const [selectedBook, setSelectedBook] = useState(null);
     const [showAddModal, setShowAddModal] = useState(false);
-    const [searchText, setSearchText] = useState('');
     const [autoFlyTarget, setAutoFlyTarget] = useState(null);
+    const [toast, setToast] = useState(null);
+    const [isWarping, setIsWarping] = useState(false);
     const galaxyRef = useRef(null);
+
+    const showToast = useCallback((msg, type = 'info') => {
+        setToast({ msg, type });
+        setTimeout(() => setToast(null), 3000);
+    }, []);
 
     // ---- 登录成功 ----
     const handleLogin = useCallback(async (userData) => {
         setUser(userData);
-        setPhase('loading');
+        setIsWarping(true); // 开启跃迁动效
 
         try {
             const url = new URL('/api/reading/gist', window.location.origin);
@@ -58,20 +64,22 @@ export default function ReadingOdysseyPage() {
                 cache: 'no-store'
             });
             const data = await res.json();
-            setBooks(data.books || []);
-
-            // 新用户自动打开入库 modal
-            if (userData.isNew || (data.books || []).length === 0) {
+            
+            // 等待跃迁动画高潮 (1.2s)
+            setTimeout(() => {
+                setBooks(data.books || []);
                 setPhase('galaxy');
-                setShowAddModal(true);
-            } else {
-                setPhase('galaxy');
-            }
+                setIsWarping(false);
+                if (userData.isNew || (data.books || []).length === 0) {
+                    setShowAddModal(true);
+                }
+            }, 1200);
         } catch (err) {
             console.error('读取书单失败:', err);
+            setIsWarping(false);
             setPhase('galaxy');
         }
-    }, []);
+    }, [showToast]);
 
     // ---- 点击粒子书 ----
     const handleBookClick = useCallback((book) => {
@@ -100,9 +108,8 @@ export default function ReadingOdysseyPage() {
     }, []);
 
     // ---- 搜索 ----
-    const handleSearch = useCallback((e) => {
-        if (e.key !== 'Enter') return;
-        const q = searchText.toLowerCase().trim();
+    const handleSearch = useCallback((manualQuery) => {
+        const q = (typeof manualQuery === 'string' ? manualQuery : searchText).toLowerCase().trim();
         if (!q) return;
         
         const foundIdx = books.findIndex(b =>
@@ -113,7 +120,6 @@ export default function ReadingOdysseyPage() {
         if (foundIdx !== -1) {
             const found = books[foundIdx];
             if (viewMode === 'galaxy') {
-                // 书墙模式：先解体，再飞入
                 if (galaxyRef.current) {
                     galaxyRef.current.triggerBookDissolve(foundIdx, () => {
                         handleBookClick(found);
@@ -122,14 +128,13 @@ export default function ReadingOdysseyPage() {
                     handleBookClick(found);
                 }
             } else {
-                // 地球模式：直接飞行
                 setAutoFlyTarget(found);
                 setSelectedBook(found);
             }
         } else {
-            alert(`未在星图中找到关于"${q}"的书籍`);
+            showToast(`未在星图中找到关于 "${q}" 的书籍`, 'error');
         }
-    }, [searchText, books, viewMode, handleBookClick]);
+    }, [searchText, books, viewMode, handleBookClick, showToast]);
 
     // 统计数据
     const uniqueCountries = new Set(books.map(b => b.country).filter(Boolean)).size;
@@ -139,7 +144,7 @@ export default function ReadingOdysseyPage() {
         <div className={styles.odysseyRoot}>
 
             {/* === 登录场景 === */}
-            {phase === 'login' && <LoginScene onLogin={handleLogin} />}
+            {phase === 'login' && <LoginScene onLogin={handleLogin} isWarping={isWarping} />}
 
             {/* === 加载中 === */}
             {phase === 'loading' && (
@@ -159,6 +164,7 @@ export default function ReadingOdysseyPage() {
                                 <GlobeScene 
                                     books={books} 
                                     onBookClick={(b) => {
+                                        showToast(`正在聚焦于《${b.title}》...`);
                                         setAutoFlyTarget(null);
                                         setSelectedBook(b);
                                     }} 
@@ -223,7 +229,11 @@ export default function ReadingOdysseyPage() {
                                 </button>
                             </div>
                             <div className={styles.searchBox}>
-                                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
+                                <svg 
+                                    width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"
+                                    style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.6)' }}
+                                    onClick={() => handleSearch()}
+                                >
                                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                                 </svg>
                                 <input
@@ -231,7 +241,7 @@ export default function ReadingOdysseyPage() {
                                     placeholder="搜索书名..."
                                     value={searchText}
                                     onChange={(e) => setSearchText(e.target.value)}
-                                    onKeyDown={handleSearch}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 />
                             </div>
 
@@ -302,6 +312,14 @@ export default function ReadingOdysseyPage() {
                     onClose={() => setShowAddModal(false)}
                     onBooksAdded={handleBooksAdded}
                 />
+            )}
+            {/* === 导航提示 (Toast) === */}
+            {toast && (
+                <div className={styles.toastContainer}>
+                    <div className={`${styles.toast} ${toast.type === 'error' ? styles.toastError : ''}`}>
+                        {toast.type === 'error' ? '✖' : '✔'} {toast.msg}
+                    </div>
+                </div>
             )}
         </div>
     );

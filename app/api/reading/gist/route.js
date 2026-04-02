@@ -66,7 +66,7 @@ export async function GET(request) {
 // 写入/更新书单（防并发覆盖锁）
 // ==========================================
 export async function POST(request) {
-    const { gistId, book, action } = await request.json();
+    const { gistId, book, books, action } = await request.json();
     if (!gistId) return NextResponse.json({ error: '缺少 gistId' }, { status: 400 });
 
     try {
@@ -78,6 +78,15 @@ export async function POST(request) {
             // 去重：同名书籍不重复添加
             const exists = latest.books.find(b => b.id === book.id);
             if (!exists) latest.books.unshift(book);
+        } else if (action === 'batchAdd') {
+            // 批量去重并合并
+            if (Array.isArray(books)) {
+                for (const b of books) {
+                    if (!latest.books.find(x => x.id === b.id)) {
+                        latest.books.unshift(b);
+                    }
+                }
+            }
         } else if (action === 'updateQuote') {
             // 更新金句
             const idx = latest.books.findIndex(b => b.id === book.id);

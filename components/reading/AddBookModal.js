@@ -15,7 +15,8 @@ export default function AddBookModal({ gistId, onClose, onBooksAdded }) {
         if (lines.length === 0) return;
 
         setLoading(true);
-        setResults([]);
+        // 初始化待处理列表，显示为“扫描中”
+        setResults(lines.map(q => ({ query: q, status: 'pending' })));
         setDone(false);
 
         try {
@@ -30,37 +31,36 @@ export default function AddBookModal({ gistId, onClose, onBooksAdded }) {
             if (!scrapeRes.ok) throw new Error(scrapeData.error || '抓取失败');
 
             const successBooks = [];
-            const displayResults = [];
+            const finalResults = [];
 
             for (const item of scrapeData.results) {
                 if (item.book) {
                     successBooks.push(item.book);
-                    displayResults.push({ query: item.query, success: true, title: item.book.title });
+                    finalResults.push({ query: item.query, status: 'success', title: item.book.title, cover: item.book.coverUrl });
                 } else {
-                    displayResults.push({ query: item.query, success: false, error: item.error });
+                    finalResults.push({ query: item.query, status: 'error', error: item.error });
                 }
             }
 
-            setResults(displayResults);
+            setResults(finalResults);
 
-            // Step 2: 将成功解析的书籍逐一写入 Gist
-            const addedBooks = [];
-            for (const book of successBooks) {
+            setResults(finalResults);
+
+            // Step 2: 批量写入 Gist（从 N 次请求优化为 1 次）
+            if (successBooks.length > 0) {
                 try {
                     const res = await fetch('/api/reading/gist', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ gistId, action: 'add', book }),
+                        body: JSON.stringify({ gistId, action: 'batchAdd', books: successBooks }),
                     });
                     const data = await res.json();
-                    if (res.ok) addedBooks.push(book);
+                    if (!res.ok) throw new Error(data.error);
+                    onBooksAdded(successBooks);
                 } catch (err) {
-                    console.warn('写入 Gist 失败:', err);
+                    console.error('批量更新 Gist 失败:', err);
+                    showToast('同步到云端失败，请稍后重试', 'error');
                 }
-            }
-
-            if (addedBooks.length > 0) {
-                onBooksAdded(addedBooks);
             }
 
             setDone(true);
@@ -111,21 +111,27 @@ export default function AddBookModal({ gistId, onClose, onBooksAdded }) {
                     )}
                 </form>
 
-                {/* 进度结果 */}
+                {/* 进度结果网格 */}
                 {results.length > 0 && (
-                    <div className={styles.importResult}>
+                    <div className={styles.importGrid}>
                         {results.map((r, i) => (
-                            <div
-                                key={i}
-                                className={`${styles.importResultItem} ${r.success ? styles.success : styles.error}`}
-                            >
-                                <span>{r.success ? '✅' : '❌'}</span>
-                                <span>
-                                    {r.success
-                                        ? `《${r.title}》已加入星图`
-                                        : `「${r.query}」— ${r.error}`
-                                    }
-                                </span>
+                            <div key={i} className={styles.importItem} style={{ animationDelay: `${i * 0.1}s` }}>
+                                {r.status === 'success' && r.cover ? (
+                                    <img src={r.cover} className={styles.importItemCover} alt={r.title} />
+                                ) : (
+                                    <div className={styles.importItemCoverPending}>
+                                        {r.status === 'success' ? '📚' : r.status === 'error' ? '❌' : '📡'}
+                                    </div>
+                                )}
+                                <div className={styles.importItemTitle}>
+                                    {r.status === 'success' ? r.title : r.query}
+                                </div>
+                                <div className={`${styles.importItemStatus} ${
+                                    r.status === 'success' ? styles.statusSuccess :
+                                    r.status === 'error' ? styles.statusError : styles.statusPending
+                                }`}>
+                                    {r.status === 'success' ? '已入库' : r.status === 'error' ? '失败' : '扫描中...'}
+                                </div>
                             </div>
                         ))}
                     </div>
