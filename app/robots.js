@@ -1,3 +1,5 @@
+import { absoluteUrl } from '@/lib/site-config';
+
 export default function robots() {
     return {
         rules: {
@@ -5,6 +7,6 @@ export default function robots() {
             allow: '/',
             disallow: ['/api/'],
         },
-        sitemap: 'https://www.yancey.blog/sitemap.xml',
+        sitemap: absoluteUrl('/sitemap.xml'),
     }
 }

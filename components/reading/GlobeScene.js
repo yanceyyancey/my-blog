@@ -47,7 +47,11 @@ async function getCountryGeo(isoA2) {
     return geoCacheIndex ? geoCacheIndex[isoA2] : null;
 }
 
-function proxyCoverUrl(url) { return url ? `/api/cover-proxy?url=${encodeURIComponent(url)}` : null; }
+function proxyCoverUrl(url) {
+    if (!url) return null;
+    if (url.startsWith('data:')) return url; // Base64 直接返回
+    return `/api/cover-proxy?url=${encodeURIComponent(url)}`;
+}
 
 function makeCoverTexture(books, colorHex) {
     const W = 512, H = 683;
@@ -158,6 +162,7 @@ const countryColor = c => ({ US:'#7c3aed', GB:'#06b6d4', CN:'#f59e0b', JP:'#ec48
 export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocused, visible = true }) {
     const mountRef = useRef(null);
     const stateRef = useRef(null);
+    const booksRef = useRef(books);
     const [sceneReady, setSceneReady] = useState(false);
     const [meshesReady, setMeshesReady] = useState(false);
     const prevFocusedRef = useRef(isFocused);
@@ -166,6 +171,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
     const onBookClickRef = useRef(onBookClick); // 补齐缺失的 Ref
     const interactableMeshesRef = useRef([]); // 关键：使用 Ref 替代隐式全局变量
     useEffect(() => { visibleRef.current = visible; }, [visible]);
+    useEffect(() => { booksRef.current = books; }, [books]);
 
     // 关键：实时更新回调引用，解决 Stale Closure 问题，确保点击能触发最新的 HUD 逻辑
     useEffect(() => {
@@ -198,10 +204,11 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
         const globeMesh = new THREE.Mesh(
             new THREE.SphereGeometry(R, 64, 64), 
-            new THREE.MeshPhongMaterial({ color: 0x223344, transparent: true, opacity: 0, shininess: 10 })
+            new THREE.MeshPhongMaterial({ color: 0x223344, transparent: true, opacity: 1, shininess: 10 })
         );
         globeMesh.frustumCulled = false;
         scene.add(globeMesh);
+
         new THREE.TextureLoader().load('https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg', tex => {
             tex.colorSpace = THREE.SRGBColorSpace;
             globeMesh.material.map = tex; globeMesh.material.color.set(0x8899aa); globeMesh.material.needsUpdate = true;
@@ -211,12 +218,17 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         const sun = new THREE.DirectionalLight(0xfff8e8, 2.5); sun.position.set(30, 20, 10); scene.add(sun);
 
         const loadContent = async (currentBooks) => {
-            // 清理旧的书籍 Mesh
-            interactableMeshesRef.current.forEach(m => {
-                scene.remove(m);
-                if (m.material.uniforms?.uMap?.value) m.material.uniforms.uMap.value.dispose();
-                m.geometry.dispose();
-            });
+            console.log('>>> [GLOBE] Starting loadContent for books:', currentBooks.length);
+            
+            // 记录版本，防止多次加载相互覆盖
+            const loadVersion = Date.now();
+            if (!stateRef.current) stateRef.current = {};
+            stateRef.current.loadVersion = loadVersion;
+
+            // 清理旧的书籍 Mesh (不再立即清除，在准备好新的之后再换，防止闪烁)
+            const oldMeshes = [...interactableMeshesRef.current];
+            // 现在开始清空当前引用的数组
+            // 我们保持数组引用不变，以便 stateRef 中的引用依然有效
             interactableMeshesRef.current.length = 0;
 
             const countries = {};
@@ -228,8 +240,12 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
 
             await Promise.all(Object.entries(countries).map(async ([code, {books:bks, lat, lon}]) => {
                 const geo = await getCountryGeo(code);
+                if (!geo) {
+                    console.warn(`>>> [GLOBE] No geography found for country code: ${code}`);
+                    return;
+                }
                 const res = await makeCoverTexture(bks, countryColor(code));
-                if (res && geo) {
+                if (res) {
                     const { tex, grid } = res;
                     const ms = buildCountryMeshes(geo, lat, lon, tex);
                     ms.forEach(m => {
@@ -240,12 +256,27 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
                     });
                 }
             }));
-            if (globeMesh.material.opacity < 1) {
-                gsap.to(globeMesh.material, { opacity: 1, duration: 1.2 });
+
+            // 检查版本，如果中间有更新，则放弃本次渲染结果
+            if (stateRef.current.loadVersion !== loadVersion) {
+                console.log('>>> [GLOBE] Obsolete load detected, skipping cleanup.');
+                return;
+            }
+
+            // 现在清理旧的 Mesh
+            oldMeshes.forEach(m => {
+                scene.remove(m);
+                if (m.material.uniforms?.uMap?.value) m.material.uniforms.uMap.value.dispose();
+                m.geometry.dispose();
+            });
+
+            console.log('>>> [GLOBE] content loaded, total meshes:', interactableMeshesRef.current.length);
+            if (interactableMeshesRef.current.length === 0 && currentBooks.length > 0) {
+                console.warn('>>> [GLOBE] No meshes created even though books are present. Check countryCodes.');
             }
             setMeshesReady(true);
         };
-        loadContent(books);
+        loadContent(booksRef.current);
 
         const runAnim = (lat, lon, targetR, type, onDone) => {
             anim.active = false; // 杀掉之前的
@@ -319,7 +350,7 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
         loop();
 
         stateRef.current = { renderer, interactableMeshes: interactableMeshesRef.current, controls, camera, runAnim, anim, loadContent };
-        setSceneReady(true);
+        requestAnimationFrame(() => setSceneReady(true));
         return () => { 
             cancelAnimationFrame(animId); 
             controls.dispose(); // 补齐清理逻辑
@@ -351,6 +382,13 @@ export default function GlobeScene({ books, onBookClick, autoFlyTarget, isFocuse
             );
             if (m) {
                 lastHandledTargetIdRef.current = targetId;
+                // 脉冲高亮动画
+                if (m.material.uniforms?.uOpacity) {
+                    gsap.to(m.material.uniforms.uOpacity, {
+                        value: 0.3, duration: 0.3, repeat: 3, yoyo: true, ease: 'sine.inOut',
+                        onComplete: () => { m.material.uniforms.uOpacity.value = 1.0; }
+                    });
+                }
                 // 略微延迟以等待 CSS 过渡完成
                 setTimeout(() => { 
                     if(s.anim) s.runAnim(m.userData.lat, m.userData.lon, 8.2, 'fly', () => onBookClickRef.current?.(autoFlyTarget)); 

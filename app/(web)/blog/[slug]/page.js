@@ -1,10 +1,11 @@
-import { getPostData, getAllPostIds } from '@/lib/posts';
+import { getPostData } from '@/lib/posts';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import Comments from '@/components/Comments';
 import ArticleContent from '@/components/ArticleContent';
 import TableOfContents from '@/components/TableOfContents';
 import ReadingProgressBar from '@/components/ReadingProgressBar';
+import { absoluteUrl, siteConfig } from '@/lib/site-config';
 
 // Return empty array: posts are rendered on-demand (ISR) instead of at build time.
 // This prevents Notion API rate limiting from mass-fetching all posts during every deploy.
@@ -16,9 +17,40 @@ export async function generateMetadata({ params }) {
     const { slug } = await params;
     try {
         const postData = await getPostData(slug);
+        const postUrl = absoluteUrl(`/blog/${slug}`);
+        const imageUrl = absoluteUrl(`/blog/${slug}/opengraph-image`);
+
         return {
-            title: `${postData.title} | Blog`,
+            title: postData.title,
             description: postData.description || '阅读此文章了解更多',
+            alternates: {
+                canonical: postUrl,
+            },
+            openGraph: {
+                type: 'article',
+                url: postUrl,
+                title: postData.title,
+                description: postData.description || siteConfig.description,
+                siteName: siteConfig.name,
+                locale: siteConfig.locale,
+                publishedTime: postData.date,
+                authors: [siteConfig.author.name],
+                tags: postData.tags,
+                images: [
+                    {
+                        url: imageUrl,
+                        width: 1200,
+                        height: 630,
+                        alt: postData.title,
+                    },
+                ],
+            },
+            twitter: {
+                card: 'summary_large_image',
+                title: postData.title,
+                description: postData.description || siteConfig.description,
+                images: [imageUrl],
+            },
         };
     } catch (error) {
         return {

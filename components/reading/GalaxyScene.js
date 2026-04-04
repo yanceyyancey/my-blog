@@ -102,15 +102,46 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     useImperativeHandle(ref, () => ({
         triggerBookDissolve: (bookIdx, callback) => {
             const s = sceneRef.current;
-            if (!s || !bookStartIndices.current[bookIdx]) return;
-            dissolvingBookIdxRef.current = bookIdx; // 标记开始解体
+            if (!s || bookStartIndices.current[bookIdx] === undefined) return;
+            dissolvingBookIdxRef.current = bookIdx;
             const startIdx = bookStartIndices.current[bookIdx];
-            s.triggerDissolve(s.geo, startIdx, () => {
-                dissolvingBookIdxRef.current = null; // 解体完成后重置，准备飞入
+            if (s.triggerDissolve) {
+                s.triggerDissolve(startIdx, () => {
+                    dissolvingBookIdxRef.current = null;
+                    if (callback) callback();
+                });
+            } else {
+                dissolvingBookIdxRef.current = null;
                 if (callback) callback();
+            }
+        },
+        triggerHighlight: (bookIdx, duration = 1500) => {
+            const s = sceneRef.current;
+            if (!s || !s.geo || bookStartIndices.current[bookIdx] === undefined) return;
+            const startIdx = bookStartIndices.current[bookIdx];
+            const colorAttr = s.geo.attributes.color;
+            if (!colorAttr || !colorAttr.array) return;
+            
+            const count = PARTICLE_COUNT * 3;
+            const origColors = new Float32Array(count);
+            for (let i = 0; i < count; i++) {
+                origColors[i] = colorAttr.array[startIdx * 3 + i] || 0;
+            }
+
+            gsap.to({ p: 0 }, {
+                p: 1, duration: duration / 1000, ease: 'sine.inOut', repeat: 1, yoyo: true,
+                onUpdate: function() {
+                    const p = this.progress();
+                    const gain = 1.0 + p * 1.5;
+                    for (let i = 0; i < count; i++) {
+                        colorAttr.array[startIdx * 3 + i] = Math.min(1, origColors[i] * gain);
+                    }
+                    colorAttr.needsUpdate = true;
+                }
             });
         }
     }));
+
     useEffect(() => {
         if (isExitingToGlobe) {
             console.log('>>> [ACTION] Starting Clean Rigid Flight...');
@@ -171,7 +202,10 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     // 冗余保障：当 visible 变为 true 时，如果进度还停留在地球状态，自动拉回书墙模式
     useEffect(() => {
         if (visible && introRef.current.progress >= 2 && !isExitingToGlobe) {
-            console.log('>>> [AUTO-FIX] Restoring Wall Layout on Visibility...');            if (cameraRef.current && defaultZ.current > 0) gsap.to(cameraRef.current.position, { z: defaultZ.current, duration: 1, ease: 'expo.out' });
+            console.log('>>> [AUTO-FIX] Restoring Wall Layout on Visibility...');
+            if (cameraRef.current && defaultZ.current > 0) {
+                gsap.to(cameraRef.current.position, { z: defaultZ.current, duration: 1, ease: 'expo.out' });
+            }
             dissolvingBookIdxRef.current = null;
         }
     }, [visible, isExitingToGlobe]);
@@ -257,11 +291,15 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         const s = sceneRef.current;
         if (!s || currentBooks.length === 0) return;
 
-        console.log('>>> [ACTION] Syncing Bookshelf Data:', currentBooks.length);
+        const loadVersion = Date.now();
+        s.loadVersion = loadVersion;
+
+        console.log('>>> [ACTION] Syncing Bookshelf Data:', currentBooks.length, 'version:', loadVersion);
 
         // 1. 采样封面颜色
         const allCoverColors = await Promise.all(currentBooks.map(b => {
-            const proxyUrl = `/api/cover-proxy?url=${encodeURIComponent(b.coverUrl || '')}`;
+            const cover = b.coverUrl || '';
+            const proxyUrl = cover.startsWith('data:') ? cover : `/api/cover-proxy?url=${encodeURIComponent(cover)}`;
             return sampleCoverColors(proxyUrl);
         }));
 
@@ -320,7 +358,9 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             }
         }
 
-        // 3. 构建/更新 BufferGeometry
+        if (s.loadVersion !== loadVersion) return; // 舍弃过期任务
+
+        // 4. 构建/更新 BufferGeometry
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(allPositions, 3));
         geo.setAttribute('color', new THREE.BufferAttribute(allColors, 3));
@@ -431,7 +471,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         if (books.length > 0) updateBookshelf(books);
     }, [books, updateBookshelf]);
 
-    const triggerDissolve = (startParticleIdx, callback) => {
+    const triggerDissolve = useCallback((startParticleIdx, callback) => {
         const s = sceneRef.current; if (!s || !s.geo) return;
         s.controls.enabled = false;
         const pos = s.geo.attributes.position.array;
@@ -458,19 +498,14 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             },
             onComplete: callback
         });
-    };
+    }, []);
 
-    useImperativeHandle(ref, () => ({
-        triggerBookDissolve: (bookIdx, callback) => {
-            if (bookStartIndices.current[bookIdx] !== undefined) {
-                dissolvingBookIdxRef.current = bookIdx;
-                triggerDissolve(bookStartIndices.current[bookIdx], () => {
-                    dissolvingBookIdxRef.current = null;
-                    callback?.();
-                });
-            }
+    // 解体动画逻辑挂载到内部状态
+    useEffect(() => {
+        if (sceneRef.current) {
+            sceneRef.current.triggerDissolve = triggerDissolve;
         }
-    }));
+    }, [triggerDissolve]);
     
     // ---- 点击检测：区分拖拽与点击，防止拖拽误触 ----
     useEffect(() => {
@@ -532,7 +567,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             canvas.removeEventListener('mousemove', onMouseMove);
             canvas.removeEventListener('mouseup', onMouseUp);
         };
-    }, [books.length]);
+    }, [books, triggerDissolve]);
     return (
         <>
             <canvas ref={canvasRef} className={styles.canvas} />
@@ -542,3 +577,4 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
 });
 
 export default GalaxyScene;
+GalaxyScene.displayName = 'GalaxyScene';

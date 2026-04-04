@@ -87,10 +87,13 @@ export async function POST(request) {
                     }
                 }
             }
-        } else if (action === 'updateQuote') {
-            // 更新金句
+        } else if (action === 'updateBook') {
+            // 更新金句与心情
             const idx = latest.books.findIndex(b => b.id === book.id);
-            if (idx !== -1) latest.books[idx].quote = book.quote;
+            if (idx !== -1) {
+                if (book.quote !== undefined) latest.books[idx].quote = book.quote;
+                if (book.mood !== undefined) latest.books[idx].mood = book.mood;
+            }
         } else if (action === 'remove') {
             latest.books = latest.books.filter(b => b.id !== book.id);
         }

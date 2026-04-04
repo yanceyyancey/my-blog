@@ -8,40 +8,48 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // ==========================================
 // 工具：通过 Nominatim 地理编码（含 sleep 防封禁队列）
 // ==========================================
-async function geocode(countryName, retries = 3) {
+async function geocode(locationName, retries = 2) {
+    if (!locationName) return null;
     for (let i = 0; i < retries; i++) {
         try {
-            await sleep(1500); // 必须：Nominatim 限速 1 req/s
-            const res = await fetch(
-                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(countryName)}&format=json&limit=1&featuretype=country`,
-                { headers: { 'User-Agent': 'ReadingOdyssey/1.0 (yancey.blog)' } }
-            );
+            // Nominatim 绝对限速：1.5s
+            await sleep(1500); 
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationName)}&format=jsonv2&limit=1&addressdetails=1`;
+            const res = await fetch(url, { 
+                headers: { 'User-Agent': 'ReadingOdyssey/1.1 (github.com/yancey/reading-odyssey)' } 
+            });
+            
             if (res.status === 429) {
-                await sleep(3000);
+                console.warn('>>> [GEO] 429 Rate Limited. Sleeping 5s...');
+                await sleep(5000);
                 continue;
             }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
             const data = await res.json();
-            if (data[0]) {
+            if (data && data[0]) {
+                const item = data[0];
                 return {
-                    lat: parseFloat(data[0].lat),
-                    lon: parseFloat(data[0].lon),
-                    countryCode: data[0].address?.country_code?.toUpperCase() || '',
-                    displayName: data[0].display_name,
+                    lat: parseFloat(item.lat),
+                    lon: parseFloat(item.lon),
+                    countryCode: (item.address?.country_code || '').toUpperCase(),
+                    displayName: item.display_name,
                 };
             }
         } catch (e) {
-            console.warn(`[geocode] retry ${i + 1}:`, e.message);
+            console.warn(`>>> [GEO] Error for "${locationName}" (retry ${i+1}):`, e.message);
         }
     }
     return null;
 }
 
 // ==========================================
-// 工具：OpenLibrary 搜书（书名 or 作者）
+// 工具：OpenLibrary 搜书
 // ==========================================
 async function searchOpenLibrary(query) {
-    const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=5&fields=key,title,author_name,cover_i,subject_places,publish_country,edition_count`;
-    const res = await fetch(url, { next: { revalidate: 0 } });
+    // 移除 fields 限制，确保获取完整元数据
+    const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=3`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error('OpenLibrary 搜索失败');
     const data = await res.json();
     return data.docs || [];
@@ -83,49 +91,84 @@ export async function POST(request) {
         return NextResponse.json({ error: '请提供书名列表' }, { status: 400 });
     }
 
-    const results = [];
+    console.log(`>>> [SCRAPE] Starting batch scrape for ${queries.length} queries`);
 
-    for (const query of queries.slice(0, 20)) { // 单次最多 20 本
+    // Step 1: 先并行执行 OpenLibrary 搜索
+    const searchTasks = queries.slice(0, 20).map(async (query) => {
         const trimmed = query.trim();
-        if (!trimmed) continue;
-
+        if (!trimmed) return { query: trimmed, error: '输入为空' };
         try {
             const docs = await searchOpenLibrary(trimmed);
-            if (docs.length === 0) {
-                results.push({ query: trimmed, error: '未找到该书籍' });
-                continue;
-            }
-
+            if (docs.length === 0) return { query: trimmed, error: '未找到该书籍' };
+            
             const best = docs[0];
-
-            // 地理编码：优先用 subject_places，其次用 publish_country
-            const geoQuery = best.subject_places?.[0] || best.publish_country || null;
-            const geo = geoQuery ? await geocode(geoQuery) : null;
-
-            // 封面 Base64 化
+            // 立即尝试获取封面
             const coverBase64 = await fetchCoverAsBase64(best.cover_i);
+            
+            let geoQuery = best.subject_places?.[0] || best.publish_country || null;
+            if (Array.isArray(geoQuery)) geoQuery = geoQuery[0];
 
-            const bookData = {
-                id: best.key?.replace('/works/', '') || Date.now().toString(),
-                title: best.title || trimmed,
-                author: best.author_name?.[0] || '未知作者',
-                coverUrl: coverBase64 || null,
-                country: geo?.displayName?.split(',').pop()?.trim() || geoQuery || '未知',
-                countryCode: geo?.countryCode || '',
-                lat: geo?.lat || 0,
-                lon: geo?.lon || 0,
-                quote: '',
-                mood: 'default',
-                addedAt: new Date().toISOString(),
+            return { 
+                query: trimmed, 
+                book: { 
+                    ...best, 
+                    coverBase64, 
+                    geoQuery 
+                } 
             };
-
-            results.push({ query: trimmed, book: bookData });
         } catch (err) {
-            results.push({ query: trimmed, error: err.message });
+            return { query: trimmed, error: err.message };
+        }
+    });
+
+    const searchResults = await Promise.all(searchTasks);
+    
+    // Step 2: 顺序执行地理编码以严格遵守 Nominatim 速率限制
+    const geoCache = new Map();
+    const finalResults = [];
+
+    for (const item of searchResults) {
+        if (item.error) {
+            finalResults.push(item);
+            continue;
         }
 
-        await sleep(500); // 批量请求之间短暂间隔
+        const { book, query } = item;
+        const { geoQuery } = book;
+        let geo = null;
+
+        if (geoQuery) {
+            if (geoCache.has(geoQuery)) {
+                geo = geoCache.get(geoQuery);
+                console.log(`>>> [SCRAPE] Geo cache hit for: ${geoQuery}`);
+            } else {
+                console.log(`>>> [SCRAPE] Fetching geo for: ${geoQuery}`);
+                geo = await geocode(geoQuery);
+                if (geo) {
+                    geoCache.set(geoQuery, geo);
+                }
+                // 严格休眠 1.2s，确保不被 Nominatim 封锁
+                await sleep(1200);
+            }
+        }
+
+        const bookData = {
+            id: book.key?.replace('/works/', '') || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            title: book.title || query,
+            author: (Array.isArray(book.author_name) ? book.author_name[0] : book.author_name) || '未知作者',
+            coverUrl: book.coverBase64 || null,
+            country: geo?.displayName?.split(',').pop()?.trim() || geoQuery || '未知',
+            countryCode: geo?.countryCode || '',
+            lat: geo?.lat || 0,
+            lon: geo?.lon || 0,
+            quote: '',
+            mood: 'default',
+            addedAt: new Date().toISOString(),
+        };
+
+        console.log(`>>> [SCRAPE] Success: ${bookData.title} (${bookData.countryCode || 'No Geo'})`);
+        finalResults.push({ query, book: bookData });
     }
 
-    return NextResponse.json({ results });
+    return NextResponse.json({ results: finalResults });
 }

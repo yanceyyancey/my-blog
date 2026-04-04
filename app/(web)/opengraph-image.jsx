@@ -1,10 +1,11 @@
 import { ImageResponse } from 'next/og';
 import fs from 'fs';
 import path from 'path';
+import { siteConfig } from '@/lib/site-config';
 
 export const runtime = 'nodejs';
 
-export const alt = 'yancey.blog';
+export const alt = siteConfig.name;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -30,6 +31,7 @@ export default async function Image() {
                 {/* Background image perfectly centered in the 1200x630 canvas */}
                 <img
                     src={bgImageBase64}
+                    alt=""
                     style={{
                         position: 'absolute',
                         width: 1440,
@@ -56,7 +58,7 @@ export default async function Image() {
                         display: 'flex',
                     }}
                 >
-                    yancey.blog
+                    {siteConfig.name}
                 </div>
             </div>
         ),

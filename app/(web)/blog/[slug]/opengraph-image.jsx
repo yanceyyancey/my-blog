@@ -1,9 +1,10 @@
 import { ImageResponse } from 'next/og';
 import { getPostData } from '@/lib/posts';
+import { siteConfig } from '@/lib/site-config';
 
 export const runtime = 'nodejs';
 
-export const alt = 'yancey.blog - 文章预览';
+export const alt = `${siteConfig.name} - 文章预览`;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -50,7 +51,7 @@ export default async function Image({ params }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: '2px solid rgba(255,255,255,0.1)', paddingTop: '40px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <div style={{ fontSize: 32, color: '#f8fafc', fontWeight: 600, marginBottom: '8px', display: 'flex' }}>
-                                yancey.blog
+                                {siteConfig.name}
                             </div>
                             <div style={{ fontSize: 24, color: '#64748b', display: 'flex' }}>
                                 {post.date}
@@ -68,8 +69,8 @@ export default async function Image({ params }) {
         // Fallback if post not found
         return new ImageResponse(
             (
-                <div style={{ background: '#0f172a', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ fontSize: 60, color: 'white' }}>yancey.blog</div>
+                    <div style={{ background: '#0f172a', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ fontSize: 60, color: 'white' }}>{siteConfig.name}</div>
                 </div>
             ),
             { ...size }

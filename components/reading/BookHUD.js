@@ -14,6 +14,7 @@ const MOOD_LABELS = {
 export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete, showToast }) {
     const [isEditing, setIsEditing] = useState(false);
     const [quoteText, setQuoteText] = useState(book.quote || '');
+    const [selectedMood, setSelectedMood] = useState(book.mood || 'default');
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -34,14 +35,14 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     gistId,
-                    action: 'updateQuote',
-                    book: { id: book.id, quote: quoteText }
+                    action: 'updateBook',
+                    book: { id: book.id, quote: quoteText, mood: selectedMood }
                 }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
             setIsEditing(false);
-            onQuoteSaved?.({ ...book, quote: quoteText });
+            onQuoteSaved?.({ ...book, quote: quoteText, mood: selectedMood });
             showToast?.('感悟已连接至星图', 'success');
         } catch (err) {
             showToast?.('连接失败：' + err.message, 'error');
@@ -115,19 +116,32 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete,
 
                     {isEditing ? (
                         <>
-                            <textarea
-                                ref={textareaRef}
-                                className={styles.quoteTextarea}
-                                value={quoteText}
-                                onChange={(e) => setQuoteText(e.target.value)}
-                                placeholder="写下触动你的那句话..."
-                                rows={4}
-                            />
-                            <div className={styles.quoteActions}>
-                                <button className={styles.quoteCancelBtn} onClick={() => {
-                                    setIsEditing(false);
-                                    setQuoteText(book.quote || '');
-                                }}>取消</button>
+                                <div className={styles.moodSelector}>
+                                    {Object.entries(MOOD_LABELS).map(([m, { label, className }]) => (
+                                        <button
+                                            key={m}
+                                            className={`${styles.moodOption} ${m === selectedMood ? styles.moodOptionActive : ''} ${className}`}
+                                            onClick={() => setSelectedMood(m)}
+                                            title={label}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <textarea
+                                    ref={textareaRef}
+                                    className={styles.quoteTextarea}
+                                    value={quoteText}
+                                    onChange={(e) => setQuoteText(e.target.value)}
+                                    placeholder="写下触动你的那句话..."
+                                    rows={4}
+                                />
+                                <div className={styles.quoteActions}>
+                                    <button className={styles.quoteCancelBtn} onClick={() => {
+                                        setIsEditing(false);
+                                        setQuoteText(book.quote || '');
+                                        setSelectedMood(book.mood || 'default');
+                                    }}>取消</button>
                                 <button
                                     className={styles.quoteSaveBtn}
                                     onClick={handleSaveQuote}

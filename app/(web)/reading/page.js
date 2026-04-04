@@ -111,8 +111,20 @@ export default function ReadingOdysseyPage() {
 
     // ---- 添加书成功后更新 ----
     const handleBooksAdded = useCallback((newBooks) => {
-        setBooks(prev => [...newBooks, ...prev]);
-    }, []);
+        if (!Array.isArray(newBooks)) return;
+        setBooks(prev => {
+            const existingIds = new Set(prev.map(b => b.id));
+            const filteredNew = newBooks.filter(b => !existingIds.has(b.id));
+            
+            if (filteredNew.length < newBooks.length) {
+                showToast(`已跳过 ${newBooks.length - filteredNew.length} 本重复书籍`);
+            }
+            if (filteredNew.length > 0) {
+                showToast(`成功点亮 ${filteredNew.length} 颗星辰`, 'success');
+            }
+            return [...filteredNew, ...prev];
+        });
+    }, [showToast]);
 
     // ---- 搜索 ----
     const handleSearch = useCallback((manualQuery) => {
@@ -128,15 +140,23 @@ export default function ReadingOdysseyPage() {
             const found = books[foundIdx];
             if (viewMode === 'galaxy') {
                 if (galaxyRef.current) {
-                    galaxyRef.current.triggerBookDissolve(foundIdx, () => {
-                        handleBookClick(found);
-                    });
+                    galaxyRef.current.triggerHighlight(foundIdx, 1000); // 先闪烁一下
+                    setTimeout(() => {
+                        if (galaxyRef.current) {
+                            galaxyRef.current.triggerBookDissolve(foundIdx, () => {
+                                handleBookClick(found);
+                                setSearchText(''); // 搜完清空
+                            });
+                        }
+                    }, 800);
                 } else {
                     handleBookClick(found);
+                    setSearchText('');
                 }
             } else {
                 setAutoFlyTarget(found);
                 setSelectedBook(found);
+                setSearchText('');
             }
         } else {
             showToast(`未在星图中找到关于 "${q}" 的书籍`, 'error');

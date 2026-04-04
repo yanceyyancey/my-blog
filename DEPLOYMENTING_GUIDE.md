@@ -1,49 +1,112 @@
-# 🚀 将你的高级博客发布到公网并开启留言板！
+# Deployment Guide
 
-恭喜！你的博客已经完成了 **V2 华丽升级**，拥有了令人惊艳的毛玻璃拟态视觉、完美的动态流光渐变以及优雅的微动效。
+这个项目的线上链路是：
 
-接下来让我们把代码发往线上，并免费开启你的专属评论区！
+`GitHub -> Vercel -> Notion`
 
----
+代码在 GitHub，站点部署在 Vercel，文章内容从 Notion Database 拉取。
 
-## 第一步：开启 GitHub Discussions (讨论区) 激活评论系统
+## 上线前检查
 
-你的博客集成了目前最强大且**完全免费无广告**的 Giscus 评论系统，它是利用你 GitHub 项目库的讨论区作为数据库的。
+### 1. GitHub 仓库
 
-首先，你需要让你存放代码的 GitHub 仓库支持“讨论”功能：
+- 仓库代码与本地一致
+- 默认分支已连接到 Vercel
+- 如果启用了评论，仓库需要开启 Discussions
 
-1. 登录你的 GitHub 账号，进入你的 `my-blog` 仓库页面。
-2. 在仓库名称下方，点击最右侧带有齿轮图标的 **Settings**（设置）。
-3. 向下滚动到 **Features**（功能）部分。
-4. 找到 **Discussions**，并**打上勾（启用）**。
-   *(点击旁边的 "Set up discussions" 按钮，然后直接点击绿色的 "Start discussion" 完成初始化即可)*
+### 2. Vercel 环境变量
 
-> **重要**：你的仓库必须是 Public（公开）的状态，别人才能发表评论。
+至少要配置：
 
----
+- `NOTION_TOKEN`
+- `NOTION_DATABASE_ID`
 
-## 第二步：将本地新代码推送到 GitHub
+如果要启用阅读页写入功能，还需要：
 
-由于我们在本地重写了大量好看的设计，并且加入了评论代码，你需要把本地的新代码传给 GitHub。
+- `GITHUB_PAT`
+- `MASTER_GIST_ID`
 
-在你的电脑终端（必须在 `next-blog` 文件夹下）：
+### 3. Notion 数据库
+
+建议确保这些字段存在并命名稳定：
+
+- `Name`
+- `Slug`
+- `Date`
+- `Status`
+- `Category`
+- `Tags`
+- `Summary`
+- `Cover`
+
+发布文章时：
+
+- `Status = 完成`
+- 如果是日志流内容，`Category = Journal`
+
+## 发布步骤
+
+### 从本地推送到 GitHub
+
 ```bash
 git add .
-git commit -m "发布 V2：华丽视觉升级与留言板功能"
+git commit -m "docs: update project documentation"
 git push
 ```
 
----
+### 等待 Vercel 自动部署
 
-## 第三步：Vercel 自动重装上线！
+推送到已连接分支后，Vercel 会自动开始构建。
 
-如果你之前已经按照 [V1版本的部署说明] 成功在 Vercel 部署过一次：
-**你什么都不用做！**
-当你刚才按下回车把代码推送到 GitHub 时，Vercel 已经自动收到了通知，正在后台为你更新。
+建议在 Vercel 后台确认：
 
-等个 1 分钟左右，直接刷新你的博客网址 `https://my-blog-xxx.vercel.app`。
-见证奇迹的时刻：你会看到全新的网格排版首页、华丽的动态高亮文本，点进文章底部，你的专属评论区也已经生效啦！
+- Build 成功
+- 没有环境变量缺失
+- 首页和文章页都能正常访问
 
----
+## 部署后验证
 
-*✨ “设计赋予科技温度，文字让思考留下痕迹。享受你的数字花园吧！”*
+至少检查下面几项：
+
+- 首页 `/`
+- 文章列表 `/blog`
+- 任意文章详情页 `/blog/[slug]`
+- 分类页 `/categories`
+- 标签页 `/tags/[name]`
+- RSS `/feed.xml`
+- Sitemap `/sitemap.xml`
+
+如果文章刚刚在 Notion 发布但线上还没更新，通常是 ISR 缓存窗口还没到，不一定是部署失败。
+
+## 常见问题
+
+### 文章没有显示
+
+优先检查：
+
+- `Status` 是否为 `完成`
+- `Slug` 是否为空
+- `NOTION_TOKEN` 是否有权限访问该数据库
+- `NOTION_DATABASE_ID` 是否正确
+
+### 搜索结果里没有摘要
+
+优先检查：
+
+- 是否填写了 `Summary`
+- 没填时是否有正文内容可用于自动生成摘要
+
+### 图片失效
+
+Notion 原始图片链接会过期，当前项目通过 `/api/notion-image` 做了代理。
+
+如果仍然异常，优先检查：
+
+- Notion token 权限
+- 图片 block 是否仍存在
+- Vercel 函数日志里是否有接口报错
+
+## 建议
+
+- 大改动前先在本地跑 `npm run build`
+- 不要把 blog 内容源同时维护在 Notion 和另一套 CMS

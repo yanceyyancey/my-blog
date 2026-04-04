@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 export default function SearchModal({ isOpen, onClose }) {
     const [query, setQuery] = useState('');
@@ -10,7 +9,6 @@ export default function SearchModal({ isOpen, onClose }) {
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(false);
     const inputRef = useRef(null);
-    const router = useRouter();
 
     // Fetch post data when modal is open
     useEffect(() => {
@@ -79,25 +77,6 @@ export default function SearchModal({ isOpen, onClose }) {
         );
     };
 
-    // Helper to get an excerpt around the match
-    const getExcerpt = (content, highlight) => {
-        if (!content || !highlight) return '';
-        const lowerContent = content.toLowerCase();
-        const lowerHighlight = highlight.toLowerCase();
-        const index = lowerContent.indexOf(lowerHighlight);
-
-        if (index === -1) return '';
-
-        const start = Math.max(0, index - 30);
-        const end = Math.min(content.length, index + highlight.length + 30);
-
-        let excerpt = content.substring(start, end);
-        if (start > 0) excerpt = '...' + excerpt;
-        if (end < content.length) excerpt = excerpt + '...';
-
-        return highlightMatch(excerpt, highlight);
-    };
-
     if (!isOpen) return null;
 
     return (
@@ -115,7 +94,7 @@ export default function SearchModal({ isOpen, onClose }) {
                         <input
                             ref={inputRef}
                             type="text"
-                            placeholder="搜索文章标题、内容或分类..."
+                            placeholder="搜索文章标题、摘要、分类或标签..."
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             className="search-input"
@@ -148,12 +127,6 @@ export default function SearchModal({ isOpen, onClose }) {
                                             </div>
 
                                             {/* Show matched excerpt if found in description */}
-                                            {(inTitleOrDesc && post.description) && (
-                                                <div className="search-result-excerpt" style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem', lineHeight: '1.4' }}>
-                                                    {highlightMatch(post.description, query)}
-                                                </div>
-                                            )}
-
                                             {(inTitleOrDesc && post.description) && (
                                                 <div className="search-result-excerpt" style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '0.5rem', lineHeight: '1.4' }}>
                                                     {highlightMatch(post.description, query)}

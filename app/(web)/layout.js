@@ -4,21 +4,49 @@ import Navigation from '@/components/Navigation'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import { absoluteUrl, siteConfig } from '@/lib/site-config'
 
 // Fallback to system fonts to bypass Turbopack font resolve bug
 const inter = { className: 'font-inter-fallback' };
 
 export const metadata = {
-  metadataBase: new URL('https://www.yancey.blog'),
+  metadataBase: new URL(siteConfig.url),
+  applicationName: siteConfig.name,
   title: {
-    default: 'yancey | 专注保姆级教程，小白福利站',
-    template: '%s | yancey.blog'
+    default: siteConfig.title,
+    template: `%s | ${siteConfig.name}`
   },
-  description: '专注保姆级教程，小白福利站。覆盖日常任务：总结、改写、代码解释、轻量 RAG、工具调用。',
+  description: siteConfig.description,
+  authors: [{ name: siteConfig.author.name, url: siteConfig.url }],
+  creator: siteConfig.author.name,
+  publisher: siteConfig.author.name,
   alternates: {
+    canonical: '/',
     types: {
-      'application/rss+xml': '/feed.xml',
+      'application/rss+xml': siteConfig.links.rss,
     },
+  },
+  openGraph: {
+    type: 'website',
+    locale: siteConfig.locale,
+    url: siteConfig.url,
+    siteName: siteConfig.name,
+    title: siteConfig.title,
+    description: siteConfig.description,
+    images: [
+      {
+        url: absoluteUrl('/opengraph-image'),
+        width: 1200,
+        height: 630,
+        alt: siteConfig.name,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: siteConfig.title,
+    description: siteConfig.description,
+    images: [absoluteUrl('/opengraph-image')],
   },
 }
 
@@ -35,7 +63,7 @@ export default function RootLayout({ children }) {
 
           <footer className="footer">
             <div className="container">
-              <p>© {new Date().getFullYear()} My Blog.</p>
+              <p>© {new Date().getFullYear()} {siteConfig.name}.</p>
             </div>
           </footer>
 

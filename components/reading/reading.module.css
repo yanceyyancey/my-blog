@@ -432,6 +432,35 @@
 .moodJoy { border: 1px solid rgba(251,191,36,0.5); color: #fbbf24; }
 .moodDark { border: 1px solid rgba(239,68,68,0.5); color: #f87171; }
 
+.moodSelector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+
+.moodOption {
+    padding: 0.3rem 0.8rem;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.4);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.moodOption:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.moodOptionActive {
+    opacity: 1;
+    border-width: 2px;
+    transform: scale(1.05);
+}
+
 /* 金句区域 */
 .quoteSection {
     border-top: 1px solid rgba(255,255,255,0.07);
