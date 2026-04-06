@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Image from 'next/image';
 import styles from './reading.module.css';
 
 const MOOD_LABELS = {
@@ -88,7 +89,14 @@ export default function BookHUD({ book, gistId, onClose, onQuoteSaved, onDelete,
                 {/* 书籍信息区 */}
                 <div className={styles.hudBookInfo}>
                     {book.coverUrl ? (
-                        <img src={book.coverUrl} alt={book.title} className={styles.hudCover} />
+                        <Image
+                            src={book.coverUrl}
+                            alt={book.title}
+                            className={styles.hudCover}
+                            width={80}
+                            height={107}
+                            unoptimized
+                        />
                     ) : (
                         <div className={styles.hudCoverPlaceholder}>📚</div>
                     )}

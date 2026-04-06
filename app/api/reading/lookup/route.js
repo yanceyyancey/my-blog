@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import https from 'node:https';
 
+const codeLookupQueues = new Map();
+
 // --- 用最底层的 https 模块重写，彻底避开 fetch 的校验报错 ---
 function gistFetch(path, options = {}) {
     return new Promise((resolve, reject) => {
@@ -45,6 +47,20 @@ function gistFetch(path, options = {}) {
     });
 }
 
+async function withCodeLock(code, task) {
+    const previous = codeLookupQueues.get(code) || Promise.resolve();
+    const current = previous.catch(() => {}).then(task);
+    codeLookupQueues.set(code, current);
+
+    try {
+        return await current;
+    } finally {
+        if (codeLookupQueues.get(code) === current) {
+            codeLookupQueues.delete(code);
+        }
+    }
+}
+
 // ==========================================
 // GET /api/reading/lookup?code=yancey
 // 查询代号 → Gist ID，不存在则创建
@@ -64,43 +80,49 @@ export async function GET(request) {
     }
 
     try {
-        // 1. 读取 Master Index
-        const masterGist = await gistFetch(MASTER_GIST_ID);
-        const indexContent = masterGist.files['index.json']?.content || '{}';
-        const index = JSON.parse(indexContent);
+        const result = await withCodeLock(code, async () => {
+            // 在锁内再次读取，避免同一实例重复创建同代号 gist
+            const masterGist = await gistFetch(MASTER_GIST_ID);
+            const indexContent = masterGist.files['index.json']?.content || '{}';
+            const index = JSON.parse(indexContent);
 
-        // 2. 已有代号：直接返回 Gist ID
-        if (index[code]) {
-            return NextResponse.json({ gistId: index[code], isNew: false });
-        }
+            if (index[code]) {
+                return { gistId: index[code], isNew: false };
+            }
 
-        // 3. 全新代号：创建新 Gist
-        const newGist = await gistFetch('', {
-            method: 'POST',
-            body: JSON.stringify({
-                description: `Reading Odyssey — ${code}`,
-                public: false,
-                files: {
-                    'books.json': { content: JSON.stringify({ books: [] }) }
-                }
-            })
+            const newGist = await gistFetch('', {
+                method: 'POST',
+                body: JSON.stringify({
+                    description: `Reading Odyssey — ${code}`,
+                    public: false,
+                    files: {
+                        'books.json': { content: JSON.stringify({ books: [] }) }
+                    }
+                })
+            });
+
+            const freshMaster = await gistFetch(MASTER_GIST_ID);
+            const freshIndex = JSON.parse(freshMaster.files['index.json']?.content || '{}');
+
+            if (freshIndex[code]) {
+                return { gistId: freshIndex[code], isNew: false };
+            }
+
+            freshIndex[code] = newGist.id;
+
+            await gistFetch(MASTER_GIST_ID, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    files: {
+                        'index.json': { content: JSON.stringify(freshIndex, null, 2) }
+                    }
+                })
+            });
+
+            return { gistId: newGist.id, isNew: true };
         });
 
-        // 4. 更新 Master Index（防并发：先拉取再写入）
-        const freshMaster = await gistFetch(MASTER_GIST_ID);
-        const freshIndex = JSON.parse(freshMaster.files['index.json']?.content || '{}');
-        freshIndex[code] = newGist.id;
-
-        await gistFetch(MASTER_GIST_ID, {
-            method: 'PATCH',
-            body: JSON.stringify({
-                files: {
-                    'index.json': { content: JSON.stringify(freshIndex, null, 2) }
-                }
-            })
-        });
-
-        return NextResponse.json({ gistId: newGist.id, isNew: true });
+        return NextResponse.json(result);
 
     } catch (err) {
         console.error('[lookup] Error:', err.message);

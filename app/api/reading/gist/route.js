@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import https from 'node:https';
 
+const gistWriteQueues = new Map();
+
 function gistFetch(gistId, options = {}) {
     return new Promise((resolve, reject) => {
         const GITHUB_PAT = (process.env.GITHUB_PAT || "").replace(/[^\x21-\x7E]/g, "");
@@ -43,6 +45,20 @@ function gistFetch(gistId, options = {}) {
     });
 }
 
+async function withGistWriteLock(gistId, task) {
+    const previous = gistWriteQueues.get(gistId) || Promise.resolve();
+    const current = previous.catch(() => {}).then(task);
+    gistWriteQueues.set(gistId, current);
+
+    try {
+        return await current;
+    } finally {
+        if (gistWriteQueues.get(gistId) === current) {
+            gistWriteQueues.delete(gistId);
+        }
+    }
+}
+
 // ==========================================
 // GET /api/reading/gist?id=<gistId>
 // 读取用户书单
@@ -70,42 +86,62 @@ export async function POST(request) {
     if (!gistId) return NextResponse.json({ error: '缺少 gistId' }, { status: 400 });
 
     try {
-        // 防覆盖并发锁：先拉取最新快照
-        const gist = await gistFetch(gistId);
-        const latest = JSON.parse(gist.files['books.json']?.content || '{"books":[]}');
+        const { latestBooks, addedIds, skippedIds } = await withGistWriteLock(gistId, async () => {
+            // 单实例内串行化 gist 写入，尽量减少并发覆盖
+            const gist = await gistFetch(gistId);
+            const latest = JSON.parse(gist.files['books.json']?.content || '{"books":[]}');
+            const addedIds = [];
+            const skippedIds = [];
 
-        if (action === 'add') {
-            // 去重：同名书籍不重复添加
-            const exists = latest.books.find(b => b.id === book.id);
-            if (!exists) latest.books.unshift(book);
-        } else if (action === 'batchAdd') {
-            // 批量去重并合并
-            if (Array.isArray(books)) {
-                for (const b of books) {
-                    if (!latest.books.find(x => x.id === b.id)) {
-                        latest.books.unshift(b);
+            if (action === 'add') {
+                const exists = latest.books.find(b => b.id === book.id);
+                if (!exists) {
+                    latest.books.unshift(book);
+                    addedIds.push(book.id);
+                } else {
+                    skippedIds.push(book.id);
+                }
+            } else if (action === 'batchAdd') {
+                if (Array.isArray(books)) {
+                    for (const b of books) {
+                        if (!latest.books.find(x => x.id === b.id)) {
+                            latest.books.unshift(b);
+                            addedIds.push(b.id);
+                        } else {
+                            skippedIds.push(b.id);
+                        }
                     }
                 }
+            } else if (action === 'batchMerge') {
+                if (Array.isArray(books)) {
+                    for (const incoming of books) {
+                        const idx = latest.books.findIndex(b => b.id === incoming.id);
+                        if (idx !== -1) {
+                            latest.books[idx] = { ...latest.books[idx], ...incoming };
+                        }
+                    }
+                }
+            } else if (action === 'updateBook') {
+                const idx = latest.books.findIndex(b => b.id === book.id);
+                if (idx !== -1) {
+                    if (book.quote !== undefined) latest.books[idx].quote = book.quote;
+                    if (book.mood !== undefined) latest.books[idx].mood = book.mood;
+                }
+            } else if (action === 'remove') {
+                latest.books = latest.books.filter(b => b.id !== book.id);
             }
-        } else if (action === 'updateBook') {
-            // 更新金句与心情
-            const idx = latest.books.findIndex(b => b.id === book.id);
-            if (idx !== -1) {
-                if (book.quote !== undefined) latest.books[idx].quote = book.quote;
-                if (book.mood !== undefined) latest.books[idx].mood = book.mood;
-            }
-        } else if (action === 'remove') {
-            latest.books = latest.books.filter(b => b.id !== book.id);
-        }
 
-        await gistFetch(gistId, {
-            method: 'PATCH',
-            body: JSON.stringify({
-                files: { 'books.json': { content: JSON.stringify(latest, null, 2) } }
-            })
+            await gistFetch(gistId, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    files: { 'books.json': { content: JSON.stringify(latest, null, 2) } }
+                })
+            });
+
+            return { latestBooks: latest.books, addedIds, skippedIds };
         });
 
-        return NextResponse.json({ ok: true, books: latest.books });
+        return NextResponse.json({ ok: true, books: latestBooks, addedIds, skippedIds });
     } catch (err) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }

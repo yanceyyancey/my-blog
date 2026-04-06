@@ -4,6 +4,17 @@ import { useState, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import styles from './reading.module.css';
 
+function createCanvasStars(width, height, count = 260) {
+    return Array.from({ length: count }, () => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        z: Math.random(),
+        radius: 0.4 + Math.random() * 1.8,
+        hue: 205 + Math.random() * 55,
+        alpha: 0.25 + Math.random() * 0.65,
+    }));
+}
+
 // 星空粒子背景
 function initStarField(scene) {
     const count = 3000; // 提升密度，更有深度感
@@ -43,21 +54,28 @@ function initStarField(scene) {
     return { points, geo };
 }
 
-export default function LoginScene({ onLogin, isWarping = false }) {
+export default function LoginScene({ onLogin }) {
     const [code, setCode] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [pendingNew, setPendingNew] = useState(null); // { code, gistId } when isNew
+    const [renderMode, setRenderMode] = useState('webgl');
     const canvasRef = useRef(null);
     const typingTimer = useRef(null);
-
     // 初始化星空背景
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas || renderMode !== 'webgl') return;
 
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
+        let renderer;
+        try {
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'low-power' });
+        } catch (error) {
+            console.warn('LoginScene WebGL unavailable, fallback to 2D canvas:', error);
+            setRenderMode('canvas');
+            return;
+        }
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setClearColor(0x000000);
@@ -77,19 +95,10 @@ export default function LoginScene({ onLogin, isWarping = false }) {
         const animate = () => {
             animId = requestAnimationFrame(animate);
             t += 0.005;
-            
-            if (isWarping) {
-                // 跃迁效果：星星加速旋转并冲向镜头
-                stars.rotation.y += 0.05;
-                stars.rotation.x += 0.02;
-                camera.position.z -= 1.5; 
-                stars.material.opacity *= 0.98; // 逐渐虚化
-                stars.scale.multiplyScalar(1.02); // 膨胀感
-            } else {
-                stars.rotation.y += 0.00015;
-                stars.rotation.x += 0.00008;
-                stars.material.opacity = 0.5 + Math.sin(t) * 0.12;
-            }
+
+            stars.rotation.y += 0.00015;
+            stars.rotation.x += 0.00008;
+            stars.material.opacity = 0.5 + Math.sin(t) * 0.12;
             
             renderer.render(scene, camera);
         };
@@ -105,7 +114,87 @@ export default function LoginScene({ onLogin, isWarping = false }) {
         return () => {
             cancelAnimationFrame(animId);
             window.removeEventListener('resize', onResize);
+            scene.remove(stars);
+            starGeo.dispose();
+            stars.material.dispose();
+            if (renderer.forceContextLoss) {
+                renderer.forceContextLoss();
+            }
             renderer.dispose();
+        };
+    }, [renderMode]);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || renderMode !== 'canvas') return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const resize = () => {
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            canvas.style.width = `${window.innerWidth}px`;
+            canvas.style.height = `${window.innerHeight}px`;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        };
+        resize();
+
+        let stars = createCanvasStars(window.innerWidth, window.innerHeight);
+
+        let animId;
+        let t = 0;
+        const animate = () => {
+            animId = requestAnimationFrame(animate);
+            t += 0.005;
+            ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+            const gradient = ctx.createRadialGradient(
+                window.innerWidth * 0.5,
+                window.innerHeight * 0.45,
+                0,
+                window.innerWidth * 0.5,
+                window.innerHeight * 0.5,
+                Math.max(window.innerWidth, window.innerHeight) * 0.7
+            );
+            gradient.addColorStop(0, 'rgba(24, 42, 72, 0.24)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+            stars.forEach((star) => {
+                star.x += Math.sin(t + star.z * 12) * 0.04;
+                star.y += Math.cos(t * 0.8 + star.z * 10) * 0.04;
+
+                const drawX = star.x;
+                const drawY = star.y;
+                const drawRadius = star.radius;
+                const drawAlpha = star.alpha * (0.7 + Math.sin(t * 2 + star.z * 6) * 0.18);
+
+                ctx.beginPath();
+                ctx.fillStyle = `hsla(${star.hue}, 70%, 78%, ${Math.max(0.08, drawAlpha)})`;
+                ctx.arc(drawX, drawY, drawRadius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        };
+        animate();
+
+        const onResize = () => {
+            resize();
+            stars = createCanvasStars(window.innerWidth, window.innerHeight);
+        };
+        window.addEventListener('resize', onResize);
+
+        return () => {
+            cancelAnimationFrame(animId);
+            window.removeEventListener('resize', onResize);
+        };
+    }, [renderMode]);
+
+    useEffect(() => {
+        return () => {
+            clearTimeout(typingTimer.current);
         };
     }, []);
 
@@ -144,7 +233,10 @@ export default function LoginScene({ onLogin, isWarping = false }) {
                 setLoading(false);
                 return;
             }
-            onLogin({ code, gistId: data.gistId, isNew: false });
+            const success = await onLogin({ code, gistId: data.gistId, isNew: false });
+            if (success === false) {
+                setLoading(false);
+            }
         } catch (err) {
             console.error('[login error]', err.message);
             setError(err.message);
@@ -154,7 +246,7 @@ export default function LoginScene({ onLogin, isWarping = false }) {
 
     return (
         <>
-            <canvas ref={canvasRef} className={styles.canvas} />
+            <canvas key={renderMode} ref={canvasRef} className={styles.canvas} />
             <div className={styles.loginScene}>
                 <p className={styles.loginSubtitle}>Reading Odyssey</p>
                 <h1 className={styles.loginTitle} style={{ animation: 'slideUp 1s ease' }}>全球阅读足迹</h1>
@@ -207,7 +299,14 @@ export default function LoginScene({ onLogin, isWarping = false }) {
                             </button>
                             <button
                                 className={styles.confirmOkBtn}
-                                onClick={() => onLogin({ code: pendingNew.code, gistId: pendingNew.gistId, isNew: true })}
+                                onClick={async () => {
+                                    setPendingNew(null);
+                                    setLoading(true);
+                                    const success = await onLogin({ code: pendingNew.code, gistId: pendingNew.gistId, isNew: true });
+                                    if (success === false) {
+                                        setLoading(false);
+                                    }
+                                }}
                             >
                                 创建宇宙
                             </button>

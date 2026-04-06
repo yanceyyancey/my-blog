@@ -12,6 +12,75 @@ const LoginScene = dynamic(() => import('@/components/reading/LoginScene'), { ss
 const GalaxyScene = dynamic(() => import('@/components/reading/GalaxyScene'), { ssr: false });
 const GlobeScene = dynamic(() => import('@/components/reading/GlobeScene'), { ssr: false });
 
+const UNKNOWN_LABELS = new Set(['', '未知', '未知作者', '未知地点', 'unknown']);
+
+function chunkArray(items, size) {
+    const chunks = [];
+    for (let i = 0; i < items.length; i += size) {
+        chunks.push(items.slice(i, i + size));
+    }
+    return chunks;
+}
+
+function hasMeaningfulValue(value) {
+    return !UNKNOWN_LABELS.has(String(value || '').trim());
+}
+
+function bookNeedsEnrichment(book) {
+    return !hasMeaningfulValue(book.author)
+        || !hasMeaningfulValue(book.country)
+        || !hasMeaningfulValue(book.authorCountry)
+        || !hasMeaningfulValue(book.placeCountry)
+        || !book.coverUrl;
+}
+
+function buildAuditPayload(book) {
+    return {
+        title: book.title || '',
+        author: hasMeaningfulValue(book.author) ? book.author : '',
+        country: hasMeaningfulValue(book.country) ? book.country : '',
+    };
+}
+
+function mergeEnrichedBook(currentBook, enrichedBook) {
+    if (!enrichedBook) return { book: currentBook, changed: false };
+
+    const nextBook = { ...currentBook };
+    let changed = false;
+
+    const assignIfBetter = (key, nextValue, shouldReplace = false) => {
+        if (nextValue === undefined || nextValue === null) return;
+        const currentValue = nextBook[key];
+        const nextHasValue = typeof nextValue === 'number'
+            ? Number.isFinite(nextValue) && nextValue !== 0
+            : hasMeaningfulValue(nextValue);
+        const currentHasValue = typeof currentValue === 'number'
+            ? Number.isFinite(currentValue) && currentValue !== 0
+            : hasMeaningfulValue(currentValue);
+
+        if ((shouldReplace || !currentHasValue) && nextHasValue && currentValue !== nextValue) {
+            nextBook[key] = nextValue;
+            changed = true;
+        }
+    };
+
+    assignIfBetter('author', enrichedBook.author);
+    assignIfBetter('coverUrl', enrichedBook.coverUrl);
+    assignIfBetter('authorCountry', enrichedBook.authorCountry);
+    assignIfBetter('authorCountryCode', enrichedBook.authorCountryCode);
+    assignIfBetter('placeCountry', enrichedBook.placeCountry);
+    assignIfBetter('placeCountryCode', enrichedBook.placeCountryCode);
+    assignIfBetter('mapCountry', enrichedBook.mapCountry);
+    assignIfBetter('mapCountryCode', enrichedBook.mapCountryCode);
+    assignIfBetter('countrySource', enrichedBook.countrySource);
+    assignIfBetter('country', enrichedBook.country, !hasMeaningfulValue(currentBook.country));
+    assignIfBetter('countryCode', enrichedBook.countryCode);
+    assignIfBetter('lat', enrichedBook.lat);
+    assignIfBetter('lon', enrichedBook.lon);
+
+    return { book: nextBook, changed };
+}
+
 export default function ReadingOdysseyPage() {
     // ---- 隐藏博客全局导航（沉浸模式）----
     useEffect(() => {
@@ -32,7 +101,7 @@ export default function ReadingOdysseyPage() {
     }, []);
 
     // ---- 状态机 ----
-    const [phase, setPhase] = useState('login'); // 'login' | 'loading' | 'galaxy'
+    const [phase, setPhase] = useState('login'); // 'login' | 'galaxy'
     const [viewMode, setViewMode] = useState('galaxy'); // 'galaxy' | 'globe'
     const [transitioningTo, setTransitioningTo] = useState(null); // 'globe' 或 null
     const [user, setUser] = useState(null); // { code, gistId, isNew }
@@ -42,13 +111,51 @@ export default function ReadingOdysseyPage() {
     const [autoFlyTarget, setAutoFlyTarget] = useState(null);
     const [toast, setToast] = useState(null);
     const [searchText, setSearchText] = useState(''); // 关键：补齐搜索状态
-    const [isWarping, setIsWarping] = useState(false);
+    const [galaxyEntryMode, setGalaxyEntryMode] = useState('intro');
+    const [globeReady, setGlobeReady] = useState(false);
+    const [awaitingGlobeReady, setAwaitingGlobeReady] = useState(false);
+    const [globePrewarmEnabled, setGlobePrewarmEnabled] = useState(false);
+    const [isAutoEnriching, setIsAutoEnriching] = useState(false);
     const galaxyRef = useRef(null);
+    const globeReadyRef = useRef(false);
+    const hasBooksRef = useRef(false);
+    const transitioningToRef = useRef(null);
+    const awaitingGlobeReadyRef = useRef(false);
+
+    useEffect(() => {
+        globeReadyRef.current = globeReady;
+    }, [globeReady]);
+
+    useEffect(() => {
+        hasBooksRef.current = books.length > 0;
+    }, [books.length]);
+
+    useEffect(() => {
+        transitioningToRef.current = transitioningTo;
+    }, [transitioningTo]);
+
+    useEffect(() => {
+        awaitingGlobeReadyRef.current = awaitingGlobeReady;
+    }, [awaitingGlobeReady]);
+
+    const handleGlobeReadyChange = useCallback((ready) => {
+        setGlobeReady(ready);
+        if (ready && transitioningToRef.current === 'globe' && awaitingGlobeReadyRef.current) {
+            setViewMode('globe');
+            setTransitioningTo(null);
+            setAwaitingGlobeReady(false);
+        }
+    }, []);
 
     // 关键：稳定回调引用，防止 GalaxyScene 与 Page 之间的状态同步死循环
     const handleExited = useCallback(() => {
+        if (hasBooksRef.current && !globeReadyRef.current) {
+            setAwaitingGlobeReady(true);
+            return;
+        }
         setViewMode('globe');
         setTransitioningTo(null);
+        setAwaitingGlobeReady(false);
     }, []);
 
     const showToast = useCallback((msg, type = 'info') => {
@@ -59,7 +166,10 @@ export default function ReadingOdysseyPage() {
     // ---- 登录成功 ----
     const handleLogin = useCallback(async (userData) => {
         setUser(userData);
-        setIsWarping(true); // 开启跃迁动效
+        setGalaxyEntryMode('intro');
+        setGlobeReady(false);
+        setAwaitingGlobeReady(false);
+        setGlobePrewarmEnabled(false);
 
         try {
             const url = new URL('/api/reading/gist', window.location.origin);
@@ -71,22 +181,17 @@ export default function ReadingOdysseyPage() {
                 cache: 'no-store'
             });
             const data = await res.json();
-            
-            // 等待跃迁动画高潮 (1.2s)
-            setTimeout(() => {
-                setBooks(data.books || []);
-                setPhase('galaxy');
-                setIsWarping(false);
-                if (userData.isNew || (data.books || []).length === 0) {
-                    setShowAddModal(true);
-                }
-            }, 1200);
+
+            setBooks(data.books || []);
+            setPhase('galaxy');
+            if (userData.isNew || (data.books || []).length === 0) {
+                setShowAddModal(true);
+            }
         } catch (err) {
             console.error('读取书单失败:', err);
-            setIsWarping(false);
             setPhase('galaxy');
         }
-    }, [showToast]);
+    }, []);
 
     // ---- 点击粒子书 ----
     const handleBookClick = useCallback((book) => {
@@ -106,15 +211,30 @@ export default function ReadingOdysseyPage() {
 
     // ---- 删除书后更新 ----
     const handleDelete = useCallback((bookId) => {
+        setGlobeReady(false);
         setBooks(prev => prev.filter(b => b.id !== bookId));
     }, []);
 
     // ---- 添加书成功后更新 ----
     const handleBooksAdded = useCallback((newBooks) => {
         if (!Array.isArray(newBooks)) return;
+        let firstNewBook = null;
+        setGlobeReady(false);
         setBooks(prev => {
             const existingIds = new Set(prev.map(b => b.id));
-            const filteredNew = newBooks.filter(b => !existingIds.has(b.id));
+            const importBaseTime = Date.now();
+            const filteredNew = newBooks
+                .filter(b => !existingIds.has(b.id))
+                .map((book, index) => {
+                    const ts = new Date(importBaseTime + index).toISOString();
+                    return {
+                        ...book,
+                        metadataUpdatedAt: book.metadataUpdatedAt || ts,
+                        textureSpotlightAt: book.textureSpotlightAt || ts,
+                        texturePriorityBoost: book.texturePriorityBoost ?? (importBaseTime + index),
+                    };
+                });
+            firstNewBook = filteredNew[0] || null;
             
             if (filteredNew.length < newBooks.length) {
                 showToast(`已跳过 ${newBooks.length - filteredNew.length} 本重复书籍`);
@@ -124,7 +244,109 @@ export default function ReadingOdysseyPage() {
             }
             return [...filteredNew, ...prev];
         });
-    }, [showToast]);
+        if (viewMode === 'globe' && firstNewBook) {
+            setSelectedBook(null);
+            setAutoFlyTarget(firstNewBook);
+        }
+    }, [showToast, viewMode]);
+
+    useEffect(() => {
+        if (phase !== 'galaxy' || books.length === 0) {
+            setGlobePrewarmEnabled(false);
+            return;
+        }
+        if (viewMode !== 'galaxy' || transitioningTo) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setGlobePrewarmEnabled(true);
+        }, 1400);
+        return () => window.clearTimeout(timer);
+    }, [phase, books.length, viewMode, transitioningTo]);
+
+    const handleAutoEnrich = useCallback(async () => {
+        if (!user?.gistId || !books.length || isAutoEnriching) return;
+
+        const targets = books.filter(bookNeedsEnrichment);
+        if (targets.length === 0) {
+            showToast('当前书单里的作者、国度和封面都比较完整', 'success');
+            return;
+        }
+
+        setIsAutoEnriching(true);
+        showToast(`正在巡检 ${targets.length} 本待补全书籍...`);
+
+        try {
+            const enrichedResults = [];
+            const batches = chunkArray(targets, 20);
+            const updateBaseTime = Date.now();
+
+            for (const batch of batches) {
+                const res = await fetch('/api/reading/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        books: batch.map(buildAuditPayload),
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || '自动补全失败');
+                enrichedResults.push(...(data.results || []));
+            }
+
+            const updates = [];
+            let fixedCoverCount = 0;
+            let fixedCountryCount = 0;
+
+            targets.forEach((book, index) => {
+                const enriched = enrichedResults[index]?.book || null;
+                const { book: merged, changed } = mergeEnrichedBook(book, enriched);
+                if (changed) {
+                    const nextTimestamp = new Date(updateBaseTime + index).toISOString();
+                    const coverJustAdded = !book.coverUrl && merged.coverUrl;
+                    if (coverJustAdded) fixedCoverCount += 1;
+                    if (!hasMeaningfulValue(book.country) && hasMeaningfulValue(merged.country)) fixedCountryCount += 1;
+                    updates.push({
+                        ...merged,
+                        metadataUpdatedAt: nextTimestamp,
+                        ...(coverJustAdded ? {
+                            textureSpotlightAt: nextTimestamp,
+                            texturePriorityBoost: updateBaseTime + index,
+                        } : {}),
+                    });
+                }
+            });
+
+            if (!updates.length) {
+                showToast('巡检完成，但暂时没有发现可自动补全的新信息');
+                return;
+            }
+
+            const gistRes = await fetch('/api/reading/gist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    gistId: user.gistId,
+                    action: 'batchMerge',
+                    books: updates,
+                }),
+            });
+            const gistData = await gistRes.json();
+            if (!gistRes.ok) throw new Error(gistData.error || '写入补全结果失败');
+
+            const updatesById = new Map(updates.map(book => [book.id, book]));
+            setGlobeReady(false);
+            setBooks(prev => prev.map(book => updatesById.get(book.id) || book));
+            setSelectedBook(prev => (prev && updatesById.get(prev.id)) ? updatesById.get(prev.id) : prev);
+
+            showToast(`已补全 ${updates.length} 本书，封面 ${fixedCoverCount} 本，地点 ${fixedCountryCount} 本`, 'success');
+        } catch (error) {
+            console.error('自动补全失败:', error);
+            showToast(`自动补全失败：${error.message}`, 'error');
+        } finally {
+            setIsAutoEnriching(false);
+        }
+    }, [books, isAutoEnriching, showToast, user?.gistId]);
 
     // ---- 搜索 ----
     const handleSearch = useCallback((manualQuery) => {
@@ -166,53 +388,59 @@ export default function ReadingOdysseyPage() {
     // 统计数据
     const uniqueCountries = new Set(books.map(b => b.country).filter(Boolean)).size;
     const withQuotes = books.filter(b => b.quote).length;
+    const enrichableCount = books.filter(bookNeedsEnrichment).length;
+    const shouldPrewarmGlobe = phase === 'galaxy' && books.length > 0 && globePrewarmEnabled;
+    const shouldRenderGalaxy = phase === 'galaxy' && (viewMode === 'galaxy' || transitioningTo === 'globe');
+    const shouldRenderGlobe = phase === 'galaxy' && (shouldPrewarmGlobe || viewMode === 'globe' || transitioningTo === 'globe');
+    const globeVisible = viewMode === 'globe' || (transitioningTo === 'globe' && globeReady);
 
     return (
         <div className={styles.odysseyRoot}>
 
             {/* === 登录场景 === */}
-            {phase === 'login' && <LoginScene onLogin={handleLogin} isWarping={isWarping} />}
-
-            {/* === 加载中 === */}
-            {phase === 'loading' && (
-                <div className={styles.loadingOverlay}>
-                    <div className={styles.loadingSpinner} />
-                    <span className={styles.loadingText}>加载 {user?.code} 的宇宙...</span>
-                </div>
-            )}
+            {phase === 'login' && <LoginScene onLogin={handleLogin} />}
 
             {/* === 粒子星图场景 === */}
             {phase === 'galaxy' && (
                 <>
-                    {/* 3D 场景：粒子墙 与 地球 并行渲染以实现零加载切换 */}
                     <div className={styles.sceneWrapper}>
-                        <div className={(viewMode === 'globe' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
-                            <GlobeScene 
-                                books={books} 
-                                onBookClick={(b) => {
-                                    if (!b) {
-                                        setSelectedBook(null);
-                                        return;
-                                    }
-                                    showToast(`正在聚焦于《${b.title}》...`);
-                                    setAutoFlyTarget(null);
-                                    setSelectedBook(b);
-                                }} 
-                                autoFlyTarget={autoFlyTarget} 
-                                isFocused={!!selectedBook}
-                                visible={viewMode === 'globe' || transitioningTo === 'globe'}
-                            />
-                        </div>
-                        <div className={(viewMode === 'galaxy' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
-                            <GalaxyScene 
-                                ref={galaxyRef}
-                                books={books} 
-                                onBookClick={handleBookClick} 
-                                isExitingToGlobe={transitioningTo === 'globe'}
-                                onExited={handleExited}
-                                visible={viewMode === 'galaxy' || transitioningTo === 'globe'}
-                            />
-                        </div>
+                        {shouldRenderGlobe && (
+                            <div className={globeVisible ? styles.visibleScene : styles.hiddenScene}>
+                                <GlobeScene 
+                                    books={books} 
+                                    onBookClick={(b) => {
+                                        if (!b) {
+                                            setSelectedBook(null);
+                                            return;
+                                        }
+                                        showToast(`正在聚焦于《${b.title}》...`);
+                                        setAutoFlyTarget(null);
+                                        setAwaitingGlobeReady(false);
+                                        setTransitioningTo(null);
+                                        setViewMode('globe');
+                                        setSelectedBook(b);
+                                    }} 
+                                    autoFlyTarget={autoFlyTarget} 
+                                    isFocused={!!selectedBook}
+                                    visible={globeVisible}
+                                    onReadyChange={handleGlobeReadyChange}
+                                    autoFlyEnabled={viewMode === 'globe'}
+                                />
+                            </div>
+                        )}
+                        {shouldRenderGalaxy && (
+                            <div className={(viewMode === 'galaxy' || transitioningTo === 'globe') ? styles.visibleScene : styles.hiddenScene}>
+                                <GalaxyScene 
+                                    ref={galaxyRef}
+                                    books={books} 
+                                    onBookClick={handleBookClick} 
+                                    isExitingToGlobe={transitioningTo === 'globe'}
+                                    onExited={handleExited}
+                                    visible={viewMode === 'galaxy' || transitioningTo === 'globe'}
+                                    entryMode={galaxyEntryMode}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     {books.length === 0 && (
@@ -236,6 +464,7 @@ export default function ReadingOdysseyPage() {
                                     className={`${styles.viewBtn} ${viewMode === 'galaxy' && !transitioningTo ? styles.viewBtnActive : ''}`}
                                     onClick={() => {
                                         if (viewMode === 'galaxy' || transitioningTo) return;
+                                        setGalaxyEntryMode('resume');
                                         setAutoFlyTarget(null);
                                         setViewMode('galaxy');
                                     }}
@@ -249,6 +478,7 @@ export default function ReadingOdysseyPage() {
                                         if (viewMode === 'globe' || transitioningTo) return;
                                         // 手动切换至地球时，不应带有之前的自动飞行目标
                                         setAutoFlyTarget(null);
+                                        setAwaitingGlobeReady(false);
                                         setTransitioningTo('globe'); // 触发 GalaxyScene 的离场飞行动画
                                     }}
                                     title="全球足迹"
@@ -286,6 +516,13 @@ export default function ReadingOdysseyPage() {
                                 setPhase('login');
                                 setUser(null);
                                 setBooks([]);
+                                setGalaxyEntryMode('intro');
+                                setTransitioningTo(null);
+                                setViewMode('galaxy');
+                                setGlobeReady(false);
+                                setAwaitingGlobeReady(false);
+                                setAutoFlyTarget(null);
+                                setSelectedBook(null);
                             }}>
                                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
@@ -341,6 +578,10 @@ export default function ReadingOdysseyPage() {
                     showToast={showToast}
                     onClose={() => setShowAddModal(false)}
                     onBooksAdded={handleBooksAdded}
+                    onAutoEnrich={handleAutoEnrich}
+                    isAutoEnriching={isAutoEnriching}
+                    totalBooks={books.length}
+                    enrichableCount={enrichableCount}
                 />
             )}
             {/* === 导航提示 (Toast) === */}

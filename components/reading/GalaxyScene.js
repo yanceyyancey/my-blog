@@ -10,6 +10,45 @@ const IS_MOBILE = typeof window !== 'undefined' && window.innerWidth < 768;
 const SAMPLE_W = IS_MOBILE ? 22 : 45;
 const SAMPLE_H = IS_MOBILE ? 30 : 60;
 const PARTICLE_COUNT = SAMPLE_W * SAMPLE_H;
+const coverColorCache = new Map();
+
+function hashString(value) {
+    let hash = 0;
+    const input = String(value || '');
+    for (let i = 0; i < input.length; i += 1) {
+        hash = ((hash << 5) - hash) + input.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+function getBookColorCacheKey(book) {
+    if (book?.coverUrl) return `cover:${book.coverUrl}`;
+    return `book:${book?.id || ''}:${book?.title || ''}:${book?.author || ''}`;
+}
+
+function createFallbackCoverColors(book) {
+    const colors = new Array(PARTICLE_COUNT * 3);
+    const seed = hashString(`${book?.title || ''}|${book?.author || ''}|${book?.id || ''}`);
+    const baseHue = (seed % 360) / 360;
+    const shadeShift = ((seed >> 3) % 11) / 100;
+    const topColor = new THREE.Color().setHSL(baseHue, 0.68, 0.64 - shadeShift);
+    const bottomColor = new THREE.Color().setHSL((baseHue + 0.08) % 1, 0.72, 0.38);
+
+    let offset = 0;
+    for (let row = 0; row < SAMPLE_H; row += 1) {
+        const rowMix = row / Math.max(1, SAMPLE_H - 1);
+        const bandPulse = 0.92 + Math.sin((rowMix * Math.PI * 3) + baseHue * Math.PI) * 0.06;
+        const mixed = topColor.clone().lerp(bottomColor, rowMix).multiplyScalar(bandPulse);
+        for (let col = 0; col < SAMPLE_W; col += 1) {
+            colors[offset] = Math.min(1, mixed.r);
+            colors[offset + 1] = Math.min(1, mixed.g);
+            colors[offset + 2] = Math.min(1, mixed.b);
+            offset += 3;
+        }
+    }
+    return colors;
+}
 
 // ==========================================
 // 采样封面图到粒子颜色数组
@@ -31,9 +70,10 @@ function sampleCoverColors(base64Src) {
                 const colors = [];
                 for (let i = 0; i < SAMPLE_W * SAMPLE_H; i++) {
                     // 大幅增加采样增益 (2.0x)，强制让所有封面粒子更加闪亮
-                    const r = Math.min(1.0, (imageData[i * 4] / 255) * 2.0);
-                    const g = Math.min(1.0, (imageData[i * 4 + 1] / 255) * 2.0);
-                    const b = Math.min(1.0, (imageData[i * 4 + 2] / 255) * 2.0);
+                    const gain = 2.0;
+                    const r = Math.min(1.0, (imageData[i * 4] / 255) * gain);
+                    const g = Math.min(1.0, (imageData[i * 4 + 1] / 255) * gain);
+                    const b = Math.min(1.0, (imageData[i * 4 + 2] / 255) * gain);
                     colors.push(r, g, b);
                 }
                 resolve(colors);
@@ -53,6 +93,22 @@ function sampleCoverColors(base64Src) {
         img.src = base64Src || '';
         if (!base64Src) img.onerror();
     });
+}
+
+function getCachedCoverColors(book) {
+    const cacheKey = getBookColorCacheKey(book);
+    const cached = coverColorCache.get(cacheKey);
+    if (cached?.colors) return Promise.resolve(cached.colors);
+    if (cached?.promise) return cached.promise;
+
+    const cover = book?.coverUrl || '';
+    const src = cover.startsWith('data:') ? cover : `/api/cover-proxy?url=${encodeURIComponent(cover)}`;
+    const promise = sampleCoverColors(src).then((colors) => {
+        coverColorCache.set(cacheKey, { colors });
+        return colors;
+    });
+    coverColorCache.set(cacheKey, { promise });
+    return promise;
 }
 
 // ==========================================
@@ -81,10 +137,11 @@ function generateBookParticles(centerX, centerY, centerZ, colors) {
 // ==========================================
 // 主组件：粒子书籍墙
 // ==========================================
-const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlobe, onExited, visible = true }, ref) => {
-    const canvasRef = useRef(null);
+const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlobe, onExited, visible = true, entryMode = 'intro' }, ref) => {
+    const mountRef = useRef(null);
     const sceneRef = useRef(null);
     const [loaded, setLoaded] = useState(false);
+    const [engineAttempt, setEngineAttempt] = useState(0);
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
@@ -94,6 +151,8 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const dissolvingBookIdxRef = useRef(null);
     const onBookClickRef = useRef(onBookClick);
     const onExitedRef = useRef(onExited);
+    const initAttemptsRef = useRef(0);
+    const retryTimerRef = useRef(null);
 
     useEffect(() => { visibleRef.current = visible; }, [visible]);
     useEffect(() => { onBookClickRef.current = onBookClick; }, [onBookClick]);
@@ -158,7 +217,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             // 离场阶段：如果有点阵书墙，进行尺寸平滑过渡
             if (sceneRef.current?.points?.material) {
                 gsap.to(sceneRef.current.points.material, {
-                    size: 0.12, 
+                    size: 0.12,
                     duration: 0.8,
                     ease: 'power3.out'
                 });
@@ -212,16 +271,35 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
 
     // ---- 真正的场景初始化 (Renderer/Camera/Controls) 只运行一次 ----
     const initEngine = useCallback(() => {
-        if (!canvasRef.current || sceneRef.current) return;
-
-        const canvas = canvasRef.current;
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        const container = mountRef.current;
+        if (!container || sceneRef.current) return;
+        let renderer;
+        try {
+            initAttemptsRef.current += 1;
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        } catch (error) {
+            console.error('[GalaxyScene] WebGL init failed:', error);
+            if (initAttemptsRef.current < 4) {
+                retryTimerRef.current = window.setTimeout(() => {
+                    setEngineAttempt((value) => value + 1);
+                }, 250);
+            }
+            return () => {
+                if (retryTimerRef.current) {
+                    window.clearTimeout(retryTimerRef.current);
+                    retryTimerRef.current = null;
+                }
+            };
+        }
+        initAttemptsRef.current = 0;
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight);
         renderer.setClearColor(0x000000, 0);
+        renderer.domElement.className = styles.canvas;
+        container.appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(60, (container.clientWidth || window.innerWidth) / (container.clientHeight || window.innerHeight), 0.1, 1000);
         cameraRef.current = camera;
 
         const controls = new OrbitControls(camera, renderer.domElement);
@@ -246,8 +324,8 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         }
         starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
         const starMat = new THREE.PointsMaterial({
-            size: 0.15, color: 0xffffff, transparent: true, opacity: 0.4, 
-            blending: THREE.AdditiveBlending, sizeAttenuation: true 
+            size: 0.15, color: 0xffffff, transparent: true, opacity: 0.4,
+            blending: THREE.AdditiveBlending, sizeAttenuation: true
         });
         const backgroundStars = new THREE.Points(starGeo, starMat);
         scene.add(backgroundStars);
@@ -262,9 +340,11 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         };
 
         const onResize = () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
+            const width = container.clientWidth || window.innerWidth;
+            const height = container.clientHeight || window.innerHeight;
+            camera.aspect = width / height;
             camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setSize(width, height);
         };
         window.addEventListener('resize', onResize);
 
@@ -282,7 +362,21 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         return () => {
             cancelAnimationFrame(animId);
             window.removeEventListener('resize', onResize);
+            controls.dispose();
+            if (sceneRef.current?.points) {
+                sceneRef.current.points.material.map?.dispose?.();
+                sceneRef.current.points.material.dispose();
+                sceneRef.current.points.geometry.dispose();
+            }
+            backgroundStars.material.dispose();
+            backgroundStars.geometry.dispose();
+            if (renderer.domElement.parentNode === container) {
+                container.removeChild(renderer.domElement);
+            }
             renderer.dispose();
+            sceneRef.current = null;
+            cameraRef.current = null;
+            bookStartIndices.current = [];
         };
     }, []);
 
@@ -290,18 +384,18 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const updateBookshelf = useCallback(async (currentBooks) => {
         const s = sceneRef.current;
         if (!s || currentBooks.length === 0) return;
+        const startInWall = entryMode === 'resume';
 
         const loadVersion = Date.now();
         s.loadVersion = loadVersion;
 
         console.log('>>> [ACTION] Syncing Bookshelf Data:', currentBooks.length, 'version:', loadVersion);
 
-        // 1. 采样封面颜色
-        const allCoverColors = await Promise.all(currentBooks.map(b => {
-            const cover = b.coverUrl || '';
-            const proxyUrl = cover.startsWith('data:') ? cover : `/api/cover-proxy?url=${encodeURIComponent(cover)}`;
-            return sampleCoverColors(proxyUrl);
-        }));
+        // 1. 先用缓存或占位色立刻起场，真实封面颜色后台补齐
+        const allCoverColors = currentBooks.map((book) => {
+            const cached = coverColorCache.get(getBookColorCacheKey(book));
+            return cached?.colors || createFallbackCoverColors(book);
+        });
 
         // 2. 准备缓冲区数据
         const totalParticles = currentBooks.length * PARTICLE_COUNT;
@@ -345,9 +439,9 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
                 allStart[idx] = startCX + positions[j];
                 allStart[idx + 1] = startCY + positions[j + 1];
                 allStart[idx + 2] = startCZ + positions[j + 2];
-                allPositions[idx] = allStart[idx];
-                allPositions[idx + 1] = allStart[idx + 1];
-                allPositions[idx + 2] = allStart[idx + 2];
+                allPositions[idx] = startInWall ? allOrig[idx] : allStart[idx];
+                allPositions[idx + 1] = startInWall ? allOrig[idx + 1] : allStart[idx + 1];
+                allPositions[idx + 2] = startInWall ? allOrig[idx + 2] : allStart[idx + 2];
                 const rFinal = globeR + positions[j + 2] * 0.2;
                 allGlobe[idx] = -rFinal * Math.sin(basePhi) * Math.cos(baseTheta);
                 allGlobe[idx + 1] = rFinal * Math.cos(basePhi);
@@ -384,8 +478,14 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         );
 
         const mat = new THREE.PointsMaterial({
-            size: IS_MOBILE ? 0.18 : 0.12, map: circleTexture, alphaTest: 0.05,
-            vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
+            size: IS_MOBILE ? 0.18 : 0.12,
+            map: circleTexture,
+            alphaTest: 0.05,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.95,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
         });
 
         const points = new THREE.Points(geo, mat);
@@ -396,6 +496,23 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         bookStartIndices.current = indices;
         s.geo = geo; s.points = points;
         s.allStart = allStart; s.allOrig = allOrig; s.allGlobe = allGlobe;
+
+        currentBooks.forEach((book, bookIndex) => {
+            const cacheKey = getBookColorCacheKey(book);
+            const cached = coverColorCache.get(cacheKey);
+            if (cached?.colors) return;
+            getCachedCoverColors(book).then((colors) => {
+                const liveScene = sceneRef.current;
+                if (!liveScene || liveScene.loadVersion !== loadVersion || liveScene.geo !== geo) return;
+                const colorAttr = geo.getAttribute('color');
+                if (!colorAttr?.array) return;
+                const startIdx = bookIndex * PARTICLE_COUNT * 3;
+                for (let i = 0; i < colors.length; i += 1) {
+                    colorAttr.array[startIdx + i] = colors[i];
+                }
+                colorAttr.needsUpdate = true;
+            });
+        });
 
         const updateBreathe = () => {
             if (dissolvingBookIdxRef.current !== null) return;
@@ -442,12 +559,16 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             s.controls.target.set(0, 0, 0);
             s.controls.update();
             s.booksLoaded = true;
-            introRef.current.progress = 0;
-            gsap.to(introRef.current, { progress: 1, duration: 2.8, ease: 'expo.out' });
+            introRef.current.progress = startInWall ? 1 : 0;
+            if (startInWall) {
+                updateBreathe();
+            } else {
+                gsap.to(introRef.current, { progress: 1, duration: 2.8, ease: 'expo.out' });
+            }
         }
 
         setLoaded(true);
-    }, []);
+    }, [entryMode]);
 
     // ---- 处理空书籍时的默认相机位置 ----
     useEffect(() => {
@@ -465,7 +586,16 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     useEffect(() => {
         const cleanup = initEngine();
         return () => cleanup?.();
-    }, [initEngine]);
+    }, [initEngine, engineAttempt]);
+
+    useEffect(() => {
+        return () => {
+            if (retryTimerRef.current) {
+                window.clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (books.length > 0) updateBookshelf(books);
@@ -568,12 +698,7 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             canvas.removeEventListener('mouseup', onMouseUp);
         };
     }, [books, triggerDissolve]);
-    return (
-        <>
-            <canvas ref={canvasRef} className={styles.canvas} />
-            {/* 已移除所有加载遮罩，实现静默快速启动 */}
-        </>
-    );
+    return <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />;
 });
 
 export default GalaxyScene;

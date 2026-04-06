@@ -55,6 +55,248 @@
     display: block;
 }
 
+.sceneFallbackLayer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+    transition: opacity 1s ease, filter 1s ease, transform 1s ease;
+}
+
+.sceneFallbackLayerGhost {
+    opacity: 0.42;
+    filter: saturate(0.84) blur(0.15px);
+    transform: scale(0.996);
+}
+
+.sceneFallbackLayer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 50% 55%, rgba(66, 111, 170, 0.12), transparent 34%),
+        radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.04), transparent 52%);
+}
+
+.galaxyFallbackBackdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at center, rgba(114, 157, 214, 0.08), transparent 30%),
+        radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.08) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 76% 64%, rgba(255, 255, 255, 0.08) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 44% 72%, rgba(255, 255, 255, 0.06) 0 1px, transparent 1.5px);
+    opacity: 0.85;
+}
+
+.galaxyFallbackFrame {
+    position: relative;
+    z-index: 1;
+    width: min(90vw, 980px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1400px;
+}
+
+.galaxyFallbackGrid {
+    display: grid;
+    gap: clamp(0.45rem, 1vw, 0.9rem);
+    justify-content: center;
+    align-content: center;
+    width: min(88vw, 920px);
+    transform: rotateX(8deg) rotateY(-3deg) scale(0.98);
+    opacity: 0.76;
+    filter: saturate(1.02);
+    animation: fallbackShelfDrift 10s ease-in-out infinite alternate;
+    position: relative;
+    z-index: 1;
+}
+
+.galaxyFallbackCard {
+    width: clamp(56px, 5vw, 84px);
+    aspect-ratio: 3 / 4;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.04);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 14px 36px rgba(0,0,0,0.28);
+    animation: fallbackCardIn 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.galaxyFallbackCardInner {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.galaxyFallbackCardInner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.45) 0 0.8px, transparent 1px);
+    background-size: 8px 8px;
+    mix-blend-mode: screen;
+    opacity: 0.12;
+}
+
+.galaxyFallbackCardActive {
+    opacity: 0.95;
+    box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.35), 0 0 22px rgba(167, 139, 250, 0.22);
+}
+
+.galaxyFallbackCover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.galaxyFallbackPlaceholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(46, 80, 124, 0.85), rgba(118, 56, 179, 0.75));
+    color: rgba(255,255,255,0.88);
+    font-size: 1.15rem;
+    font-weight: 800;
+}
+
+.globeFallbackShell {
+    position: relative;
+    width: min(54vw, 520px);
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.68;
+    z-index: 1;
+}
+
+.globeFallbackBackdrop {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at center, rgba(78, 136, 207, 0.12), transparent 28%),
+        radial-gradient(circle at 24% 32%, rgba(255,255,255,0.08) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 71% 61%, rgba(255,255,255,0.06) 0 1px, transparent 1.5px),
+        radial-gradient(circle at 58% 25%, rgba(255,255,255,0.06) 0 1px, transparent 1.5px);
+}
+
+.globeFallbackAura {
+    position: absolute;
+    inset: -12%;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, rgba(84, 169, 255, 0.24) 0%, rgba(84, 169, 255, 0.08) 42%, rgba(0,0,0,0) 72%);
+    filter: blur(16px);
+}
+
+.globeFallbackOrbit {
+    position: absolute;
+    inset: -8%;
+    border-radius: 50%;
+    border: 1px solid rgba(129, 190, 255, 0.14);
+    transform: rotateX(70deg);
+}
+
+.globeFallbackSphere {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 32% 28%, rgba(162, 214, 255, 0.52) 0%, rgba(61, 125, 197, 0.28) 28%, rgba(9, 28, 54, 0.82) 72%),
+        radial-gradient(circle at 70% 70%, rgba(74, 152, 224, 0.18), rgba(0,0,0,0) 54%);
+    box-shadow:
+        inset 0 0 80px rgba(255,255,255,0.08),
+        0 0 0 1px rgba(137, 200, 255, 0.16),
+        0 0 48px rgba(83, 163, 255, 0.2);
+    overflow: hidden;
+}
+
+.globeFallbackTexture {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background-image:
+        radial-gradient(circle at 32% 28%, rgba(255,255,255,0.18), transparent 24%),
+        url('https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg');
+    background-size: auto, cover;
+    background-position: center, 0% 50%;
+    background-repeat: no-repeat, repeat-x;
+    opacity: 0.9;
+    mix-blend-mode: screen;
+    animation: fallbackTextureDrift 20s linear infinite;
+}
+
+.globeFallbackSphere::before {
+    content: '';
+    position: absolute;
+    inset: 8%;
+    border-radius: 50%;
+    border: 1px solid rgba(137, 200, 255, 0.16);
+}
+
+.globeFallbackSphere::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+        linear-gradient(to bottom, rgba(255,255,255,0.1), transparent 28%),
+        radial-gradient(circle at center, transparent 58%, rgba(255,255,255,0.06) 59%, transparent 60%);
+    mix-blend-mode: screen;
+}
+
+.globeFallbackMarker {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    margin-left: -4px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.82);
+    box-shadow: 0 0 0 3px rgba(132, 198, 255, 0.12), 0 0 12px rgba(132, 198, 255, 0.32);
+}
+
+.globeFallbackMarkerActive {
+    background: #f7d66a;
+    box-shadow: 0 0 0 4px rgba(247, 214, 106, 0.12), 0 0 16px rgba(247, 214, 106, 0.42);
+}
+
+@keyframes fallbackFloat {
+    from { transform: translateY(6px) scale(0.975); }
+    to { transform: translateY(-6px) scale(0.995); }
+}
+
+@keyframes fallbackShelfDrift {
+    from { transform: rotateX(9deg) rotateY(-4deg) translateY(8px) scale(0.965); }
+    to { transform: rotateX(6deg) rotateY(4deg) translateY(-6px) scale(0.99); }
+}
+
+@keyframes fallbackCardIn {
+    0% {
+        opacity: 0;
+        transform: translate3d(0, 22px, 0) scale(0.88);
+        filter: blur(5px);
+    }
+    100% {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+        filter: blur(0);
+    }
+}
+
+@keyframes fallbackTextureDrift {
+    from { background-position: center, 0% 50%; }
+    to { background-position: center, 200% 50%; }
+}
+
 /* =============================================
    登录场景
    ============================================= */
@@ -682,6 +924,137 @@
     line-height: 1.6;
 }
 
+.libraryAuditRow {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+    padding: 1rem 1.05rem;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+        radial-gradient(circle at top left, rgba(124, 58, 237, 0.18), transparent 55%),
+        rgba(255,255,255,0.035);
+}
+
+.libraryAuditContent {
+    min-width: 0;
+}
+
+.libraryAuditEyebrow {
+    display: inline-block;
+    margin-bottom: 0.3rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(167, 139, 250, 0.92);
+}
+
+.libraryAuditTitle {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.4;
+}
+
+.libraryAuditText {
+    margin: 0.35rem 0 0;
+    font-size: 0.76rem;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.56);
+}
+
+.libraryAuditBtn {
+    flex-shrink: 0;
+    padding: 0.65rem 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(139, 92, 246, 0.28);
+    background: rgba(124, 58, 237, 0.14);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.libraryAuditBtn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(139, 92, 246, 0.46);
+    background: rgba(124, 58, 237, 0.2);
+}
+
+.libraryAuditBtn:disabled {
+    opacity: 0.52;
+    cursor: not-allowed;
+}
+
+.modalErrorBanner {
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.08);
+    color: #fca5a5;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.importModeTabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 0.9rem;
+}
+
+.importModeBtn {
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.66);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.importModeBtn:hover:not(:disabled) {
+    border-color: rgba(139, 92, 246, 0.45);
+    color: #fff;
+}
+
+.importModeBtnActive {
+    background: rgba(124, 58, 237, 0.18);
+    border-color: rgba(139, 92, 246, 0.45);
+    color: #fff;
+}
+
+.hiddenFileInput {
+    display: none;
+}
+
+.importHintRow {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 0.9rem;
+    flex-wrap: wrap;
+}
+
+.importHintText,
+.importHintFile {
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: rgba(255,255,255,0.46);
+}
+
+.importHintFile {
+    color: rgba(255,255,255,0.72);
+}
+
 .modalTextarea {
     width: 100%;
     background: rgba(255,255,255,0.04);
@@ -836,6 +1209,12 @@
     line-height: 1.3;
 }
 
+.importItemMeta {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.48);
+    line-height: 1.5;
+}
+
 .importItemStatus {
     font-size: 0.65rem;
     padding: 0.2rem 0.6rem;
@@ -845,6 +1224,17 @@
 .statusSuccess { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
 .statusError { background: rgba(239, 68, 68, 0.1); color: #f87171; }
 .statusPending { background: rgba(139, 92, 246, 0.1); color: #a78bfa; }
+
+@media (max-width: 640px) {
+    .libraryAuditRow {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .libraryAuditBtn {
+        width: 100%;
+    }
+}
 
 /* =============================================
    底部统计条
@@ -915,26 +1305,35 @@
    ============================================= */
 .loadingOverlay {
     position: absolute;
-    inset: 0;
-    background: #000;
+    left: 50%;
+    bottom: clamp(1.6rem, 6vh, 3.2rem);
+    transform: translateX(-50%);
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: 50;
-    gap: 1.2rem;
+    gap: 0.8rem;
+    padding: 0.7rem 1.1rem;
+    background: rgba(7, 11, 24, 0.42);
+    border: 1px solid rgba(139, 92, 246, 0.24);
+    border-radius: 999px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    pointer-events: none;
 }
 
 .loadingText {
-    font-size: 0.9rem;
-    color: rgba(255,255,255,0.4);
-    letter-spacing: 0.12em;
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.72);
+    letter-spacing: 0.1em;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .loadingSpinner {
-    width: 40px;
-    height: 40px;
+    width: 16px;
+    height: 16px;
     border: 2px solid rgba(139,92,246,0.2);
     border-top-color: #7c3aed;
     border-radius: 50%;
