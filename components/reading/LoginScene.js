@@ -63,6 +63,16 @@ export default function LoginScene({ onLogin }) {
     const [renderMode, setRenderMode] = useState('webgl');
     const canvasRef = useRef(null);
     const typingTimer = useRef(null);
+    const isComposingRef = useRef(false);
+
+    const markTyping = () => {
+        setError('');
+        setIsTyping(true);
+        clearTimeout(typingTimer.current);
+        typingTimer.current = setTimeout(() => setIsTyping(false), 800);
+    };
+
+    const sanitizeCode = (value) => String(value || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     // 初始化星空背景
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -199,12 +209,25 @@ export default function LoginScene({ onLogin }) {
     }, []);
 
     const handleInput = (e) => {
-        const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        setCode(val);
-        setError('');
-        setIsTyping(true);
-        clearTimeout(typingTimer.current);
-        typingTimer.current = setTimeout(() => setIsTyping(false), 800);
+        const nextValue = e.target.value;
+        markTyping();
+
+        if (isComposingRef.current || e.nativeEvent?.isComposing) {
+            setCode(nextValue);
+            return;
+        }
+
+        setCode(sanitizeCode(nextValue));
+    };
+
+    const handleCompositionStart = () => {
+        isComposingRef.current = true;
+    };
+
+    const handleCompositionEnd = (e) => {
+        isComposingRef.current = false;
+        markTyping();
+        setCode(sanitizeCode(e.currentTarget.value));
     };
 
     const handleSubmit = async (e) => {
@@ -258,6 +281,8 @@ export default function LoginScene({ onLogin }) {
                         placeholder="输入你的专属代号"
                         value={code}
                         onChange={handleInput}
+                        onCompositionStart={handleCompositionStart}
+                        onCompositionEnd={handleCompositionEnd}
                         maxLength={20}
                         disabled={loading}
                         autoFocus
