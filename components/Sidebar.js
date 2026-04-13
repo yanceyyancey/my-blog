@@ -13,7 +13,7 @@ export default async function Sidebar() {
                     <Image src={siteConfig.author.avatar} alt={siteConfig.author.name} width={96} height={96} />
                 </div>
                 <h3 className="profile-name">{siteConfig.author.name}</h3>
-                <p className="profile-bio">学无止境，不忘初心</p>
+                <p className="profile-bio">{siteConfig.author.headline}</p>
                 <div className="profile-stats">
                     <div className="stat-item">
                         <span className="stat-value">{stats.postCount}</span>
@@ -45,8 +45,7 @@ export default async function Sidebar() {
                     <span>公告</span>
                 </div>
                 <div className="card-content">
-                    <p>欢迎来到 {siteConfig.author.name} 的个人博客！</p>
-                    <p style={{ marginTop: '0.5rem', color: 'var(--text-secondary)' }}>专注于保姆级教程，小白福利站。</p>
+                    <p>{siteConfig.author.intro}</p>
                 </div>
             </div>
 
