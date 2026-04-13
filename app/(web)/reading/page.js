@@ -445,12 +445,19 @@ export default function ReadingOdysseyPage() {
 
                     {books.length === 0 && (
                         <div className={styles.emptyOverlay}>
-                            <p className={styles.emptyText}>
-                                你的星图还没有书籍<br />
-                                <span className={styles.addFirstBtn} onClick={() => setShowAddModal(true)}>
-                                    点击添加第一本书 →
+                            <div className={styles.emptyConstellation}>
+                                <div className={styles.emptyGlyph}>✦</div>
+                                <p className={styles.emptyPoem}>
+                                    每一本书，都是地球上<br />
+                                    <span className={styles.poemFocus}>一颗等待点亮的星</span>
+                                </p>
+                                <span
+                                    className={styles.emptyInvite}
+                                    onClick={() => setShowAddModal(true)}
+                                >
+                                    开始记录你的阅读坐标
                                 </span>
-                            </p>
+                            </div>
                         </div>
                     )}
 

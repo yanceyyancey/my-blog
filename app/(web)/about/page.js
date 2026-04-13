@@ -26,7 +26,7 @@ export default async function About() {
                 <div style={{ padding: '1rem 0 2rem 0' }}>
                     <h1 style={{ fontSize: '2.5rem', fontWeight: '800', marginBottom: '1rem', letterSpacing: '-0.04em' }}>关于 / About</h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', lineHeight: '1.6' }}>
-                        你好，欢迎来到我的网络自留地。
+                        数码玩家 / 业余开发 / AI 实用主义者。专注高效工具流与低成本方案探索，愿意分享折腾心得。
                     </p>
                 </div>
 

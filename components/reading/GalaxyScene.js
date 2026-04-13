@@ -143,6 +143,12 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
     const [loaded, setLoaded] = useState(false);
     const [engineAttempt, setEngineAttempt] = useState(0);
     const bookStartIndices = useRef([]); // 每本书粒子在大 array 中的起始索引
+    const [hud, setHud] = useState({
+        visible: false, x: 0, y: 0, book: null, isBehind: false
+    });
+    const hudRef = useRef(hud);
+    useEffect(() => { hudRef.current = hud; }, [hud]);
+
     const introRef = useRef({ progress: 0 });
     const cameraRef = useRef(null);
     const defaultZ = useRef(0);
@@ -601,6 +607,62 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
         if (books.length > 0) updateBookshelf(books);
     }, [books, updateBookshelf]);
 
+    // ---- Hover Detection (HUD) ----
+    useEffect(() => {
+        const s = sceneRef.current; if(!s || !s.renderer) return;
+        const canvas = s.renderer.domElement;
+        
+        const onMouseMove = (e) => {
+            if (introRef.current.progress > 1.1) {
+                // Determine if we are hovering a book
+                const rect = canvas.getBoundingClientRect();
+                s.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                s.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                s.raycaster.setFromCamera(s.pointer, s.camera);
+                
+                if (s.raycaster.ray.intersectPlane(s.planeZ0, s.intersectionPoint)) {
+                    const cols = Math.ceil(Math.sqrt(books.length));
+                    const rows = Math.ceil(books.length / cols);
+                    const SPACING_X = 2.8, SPACING_Y = 3.8;
+                    const col = Math.round(s.intersectionPoint.x / SPACING_X + (cols - 1) / 2);
+                    const row = Math.round(-s.intersectionPoint.y / SPACING_Y + (rows - 1) / 2);
+                    
+                    let foundIdx = -1;
+                    if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                        const idx = row * cols + col;
+                        if (idx >= 0 && idx < books.length) {
+                            const targetCX = (col - (cols - 1) / 2) * SPACING_X;
+                            const targetCY = -(row - (rows - 1) / 2) * SPACING_Y;
+                            const dx = Math.abs(s.intersectionPoint.x - targetCX);
+                            const dy = Math.abs(s.intersectionPoint.y - targetCY);
+                            if (dx < 1.3 && dy < 1.75) {
+                                foundIdx = idx;
+                            }
+                        }
+                    }
+
+                    if (foundIdx !== -1) {
+                        const book = books[foundIdx];
+                        const targetPos = new THREE.Vector3((col - (cols - 1) / 2) * SPACING_X, -(row - (rows - 1) / 2) * SPACING_Y, 0);
+                        targetPos.project(s.camera);
+                        const w = rect.width, h = rect.height;
+                        const x = (targetPos.x * 0.5 + 0.5) * w;
+                        const y = (-targetPos.y * 0.5 + 0.5) * h;
+                        
+                        setHud({ visible: true, x, y, book, isBehind: false });
+                        document.body.style.cursor = 'pointer';
+                    } else {
+                        setHud(h => h.visible ? { ...h, visible: false } : h);
+                        document.body.style.cursor = 'auto';
+                    }
+                }
+            }
+        };
+
+        canvas.addEventListener('mousemove', onMouseMove);
+        return () => canvas.removeEventListener('mousemove', onMouseMove);
+    }, [books]);
+
     const triggerDissolve = useCallback((startParticleIdx, callback) => {
         const s = sceneRef.current; if (!s || !s.geo) return;
         s.controls.enabled = false;
@@ -698,7 +760,52 @@ const GalaxyScene = forwardRef(({ books, onBookClick, onAddBook, isExitingToGlob
             canvas.removeEventListener('mouseup', onMouseUp);
         };
     }, [books, triggerDissolve]);
-    return <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />;
+    return (
+        <div ref={mountRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+            {/* Floating Space Annotation HUD */}
+            {hud.visible && hud.book && (
+                <div className={styles.floatingHUD}>
+                    <svg className={styles.connectorSvg} width="100%" height="100%">
+                        <path 
+                            className={styles.connectorLine}
+                            d={`M ${hud.x} ${hud.y} Q ${hud.x + 10} ${hud.y - 40}, ${hud.x + 60} ${hud.y - 40}`}
+                        />
+                    </svg>
+
+                    <div 
+                        className={styles.miniCard}
+                        style={{ 
+                            left: hud.x + 62, 
+                            top: hud.y - 40 - 28
+                        }}
+                    >
+                        <div className={styles.miniCardInner}>
+                            {hud.book.coverUrl ? (
+                                <img 
+                                    src={hud.book.coverUrl} 
+                                    className={styles.miniCover} 
+                                    alt="" 
+                                    onError={(e) => { e.target.style.display='none'; }}
+                                />
+                            ) : (
+                                <div className={styles.miniCover} style={{display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem'}}>📖</div>
+                            )}
+                            <div className={styles.miniMeta}>
+                                <h4 className={styles.miniTitle}>{hud.book.title}</h4>
+                                <p className={styles.miniAuthor}>{hud.book.author}</p>
+                                {(hud.book.country || hud.book.location) && (
+                                    <div className={styles.miniLocation}>
+                                        <span className={styles.miniLocDot} />
+                                        {hud.book.country || hud.book.location}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 });
 
 export default GalaxyScene;

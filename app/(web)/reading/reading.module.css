@@ -15,6 +15,29 @@
     font-family: 'Inter', -apple-system, sans-serif;
 }
 
+.sceneWrapper {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+}
+
+.visibleScene {
+    position: absolute;
+    inset: 0;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 1s ease;
+}
+
+.hiddenScene {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 1s ease;
+}
+
 /* Three.js canvas */
 .canvas {
     position: absolute;

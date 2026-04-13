@@ -415,20 +415,26 @@
     top: 0;
     left: 0;
     right: 0;
-    padding: 1.2rem 1.5rem;
+    padding: 1rem 1.2rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
     z-index: 20;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%);
+    background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 100%);
+    opacity: 0.35; /* Dimmere the nav */
+    transition: opacity 0.6s ease;
+}
+
+.sceneUI:hover {
+    opacity: 0.8;
 }
 
 .sceneTitle {
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.18em;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.35);
 }
 
 .sceneActions {
@@ -1534,7 +1540,7 @@
 
 
 /* =============================================
-   空宇宙状态 / 引导层
+   空宇宙状态 / 引导层 — 诗意版
    ============================================= */
 .emptyOverlay {
     position: absolute;
@@ -1543,25 +1549,186 @@
     align-items: center;
     justify-content: center;
     z-index: 10;
-    pointer-events: none; /* 穿透到层下的 3D 场景 */
+    pointer-events: none;
 }
 
-.emptyText {
-    color: rgba(255, 255, 255, 0.3);
-    font-size: 0.95rem;
-    text-align: center;
-    line-height: 1.8;
+.emptyConstellation {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.1rem;
     pointer-events: auto;
+    text-align: center;
+    padding: 3rem;
+    border-radius: 50%;
+    /* Thinner, softer radial background */
+    background: radial-gradient(circle, rgba(10, 15, 30, 0.25) 0%, transparent 80%);
+    animation: emptyFadeIn 2.2s ease-out both;
 }
 
-.addFirstBtn {
-    color: #a78bfa;
+@keyframes emptyFadeIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.99); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.emptyGlyph {
+    font-size: 1.2rem;
+    color: rgba(140, 180, 255, 0.35);
+    letter-spacing: 0.3em;
+    text-shadow: 0 0 10px rgba(100, 140, 255, 0.2);
+    animation: emptyPulse 6s ease-in-out infinite;
+}
+
+@keyframes emptyPulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.95); }
+    50%       { opacity: 0.60; transform: scale(1.02); }
+}
+
+.emptyPoem {
+    color: rgba(185, 205, 245, 0.35);
+    font-size: 0.82rem;
+    font-weight: 300;
+    line-height: 2.2;
+    letter-spacing: 0.08em;
+    margin: 0;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    font-family: var(--font-inter), sans-serif;
+}
+
+.poemFocus {
+    color: rgba(210, 225, 255, 0.65);
+    font-size: 0.92rem;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    display: inline-block;
+    margin-top: 0.1rem;
+}
+
+.emptyInvite {
+    display: inline-block;
+    margin-top: 0.8rem;
+    color: rgba(140, 175, 240, 0.40);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
     cursor: pointer;
-    font-weight: 600;
-    transition: color 0.2s, text-shadow 0.2s;
+    border-bottom: 1px solid rgba(140, 175, 240, 0.15);
+    padding: 0.2rem 0.6rem;
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.addFirstBtn:hover {
-    color: #c4b5fd;
-    text-shadow: 0 0 10px rgba(167, 139, 250, 0.4);
+.emptyInvite:hover {
+    color: rgba(190, 215, 255, 0.85);
+    border-color: rgba(190, 215, 255, 0.35);
+    text-shadow: 0 0 25px rgba(120, 160, 255, 0.4);
+    background: rgba(140, 175, 240, 0.04);
 }
+
+/* ─── Floating Space Annotation HUD ─── */
+.floatingHUD {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 20;
+    overflow: hidden;
+}
+
+/* ── Constellation Annotation Card ── */
+.annotationCard {
+    position: absolute;
+    pointer-events: auto;
+    width: 160px;
+    animation: annotFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes annotFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.annotTitle {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: rgba(225, 238, 255, 0.92);
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+    margin: 0 0 3px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+}
+
+.annotAuthor {
+    font-size: 0.61rem;
+    font-weight: 300;
+    color: rgba(175, 200, 245, 0.52);
+    letter-spacing: 0.03em;
+    margin: 0 0 5px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.annotLocation {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.54rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(130, 175, 255, 0.38);
+}
+
+.annotLocDot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(130, 175, 255, 0.55);
+    flex-shrink: 0;
+    animation: annotDotTwinkle 2.8s ease-in-out infinite;
+}
+
+@keyframes annotDotTwinkle {
+    0%, 100% { opacity: 0.25; transform: scale(0.85); }
+    50%       { opacity: 0.90; transform: scale(1.15); }
+}
+
+/* ── Connector Lines ── */
+.connectorSvg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 15;
+    overflow: visible;
+}
+
+.connectorLine {
+    stroke: rgba(140, 185, 255, 0.18);
+    stroke-width: 0.5;
+    stroke-dasharray: 3 6;
+    stroke-linecap: round;
+    fill: none;
+    animation: lineDash 24s linear infinite;
+}
+
+@keyframes lineDash {
+    from { stroke-dashoffset: 200; }
+    to   { stroke-dashoffset: 0; }
+}
+
+/* Legacy stubs — kept to prevent crashes from cached builds */
+.miniCard { display: contents; }
+.miniCardInner { display: contents; }
+.miniCover { display: none; }
+.miniMeta { display: contents; }
+.miniTitle { display: none; }
+.miniAuthor { display: none; }
+.miniLocation { display: none; }
+.miniLocDot { display: none; }
+
+/* ── Existing legacy ── */
+.emptyText { display: none; }
+.addFirstBtn { display: none; }
