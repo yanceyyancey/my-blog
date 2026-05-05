@@ -1067,14 +1067,13 @@ main {
   border-radius: var(--radius-md);
 }
 
-/* Scroll wrapper: contains table with horizontal scroll on mobile, full-width breakout on desktop */
+/* Scroll wrapper: removed overflow to allow the table to expand naturally 
+   and rely on word-wrapping to keep it fully visible. */
 .table-scroll-wrapper {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 /* Fade hint overlay — created by JS, positioned over the right edge */
@@ -1083,7 +1082,7 @@ main {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 40px;
+  width: 60px;
   background: linear-gradient(to left, var(--bg-primary) 0%, transparent 100%);
   pointer-events: none;
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
@@ -1096,41 +1095,21 @@ main {
   opacity: 0;
 }
 
-/* Desktop: break out of article container for full-width viewing */
+/* Desktop: slightly larger shadow, same scroll behaviour */
 @media (min-width: 992px) {
-  .table-outer {
-    width: calc(100% + 8rem);
-    margin-left: -4rem;
-    margin-right: -4rem;
-  }
-
   .table-scroll-wrapper {
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
-  }
-
-  .table-fade-hint {
-    display: none;
-    /* No need for scroll hint on wide screens */
-  }
-}
-
-@media (min-width: 1400px) {
-  .table-outer {
-    width: calc(100% + 16rem);
-    margin-left: -8rem;
-    margin-right: -8rem;
   }
 }
 
 .markdown-content table {
   width: 100%;
-  min-width: max-content;
   border-collapse: collapse;
   font-size: 0.95rem;
   table-layout: auto;
   margin: 0;
-  /* wrapper handles margin */
+  word-break: break-word;
 }
 
 .markdown-content th {
@@ -1145,6 +1124,7 @@ main {
   position: sticky;
   top: 0;
   z-index: 1;
+  word-break: break-word;
 }
 
 .markdown-content td {
@@ -1153,7 +1133,8 @@ main {
   color: var(--text-secondary);
   vertical-align: top;
   line-height: 1.7;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .markdown-content tr:last-child td {
