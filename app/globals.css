@@ -1067,13 +1067,15 @@ main {
   border-radius: var(--radius-md);
 }
 
-/* Scroll wrapper: removed overflow to allow the table to expand naturally 
-   and rely on word-wrapping to keep it fully visible. */
+/* Scroll wrapper: restores horizontal scroll for extremely wide tables 
+   to prevent columns from compressing into vertical text. */
 .table-scroll-wrapper {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Fade hint overlay — created by JS, positioned over the right edge */
@@ -1109,7 +1111,6 @@ main {
   font-size: 0.95rem;
   table-layout: auto;
   margin: 0;
-  word-break: break-word;
 }
 
 .markdown-content th {
@@ -1119,12 +1120,11 @@ main {
   text-align: left;
   padding: 0.85rem 1.2rem;
   border-bottom: 2px solid var(--border);
-  white-space: normal;
+  white-space: nowrap; /* Keep headers horizontal */
   line-height: 1.5;
   position: sticky;
   top: 0;
   z-index: 1;
-  word-break: break-word;
 }
 
 .markdown-content td {
@@ -1133,8 +1133,6 @@ main {
   color: var(--text-secondary);
   vertical-align: top;
   line-height: 1.7;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .markdown-content tr:last-child td {
